@@ -1,0 +1,62 @@
+{
+  "name": "Review",
+  "type": "object",
+  "properties": {
+    "contractor_id": {
+      "type": "string",
+      "title": "Contractor ID"
+    },
+    "booking_id": {
+      "type": "string",
+      "title": "Booking ID"
+    },
+    "reviewer_name": {
+      "type": "string",
+      "title": "Reviewer Name"
+    },
+    "rating": {
+      "type": "number",
+      "title": "Rating",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "comment": {
+      "type": "string",
+      "title": "Review Comment"
+    }
+  },
+  "required": [
+    "contractor_id",
+    "rating"
+  ],
+  "rls": {
+    "create": {
+      "created_by": "{{user.email}}"
+    },
+    "read": {},
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,221 @@
+{
+  "name": "Booking",
+  "type": "object",
+  "properties": {
+    "contractor_id": {
+      "type": "string",
+      "title": "Contractor ID"
+    },
+    "contractor_name": {
+      "type": "string",
+      "title": "Contractor Name"
+    },
+    "contractor_category": {
+      "type": "string",
+      "title": "Category"
+    },
+    "category": {
+      "type": "string",
+      "title": "Service Category",
+      "enum": [
+        "Plumbing",
+        "Electrical",
+        "Cleaning",
+        "Painting",
+        "Landscaping",
+        "HVAC",
+        "Carpentry",
+        "Roofing",
+        "General Handyman",
+        "Moving",
+        "Mobile Mechanic",
+        "Mobile Detailer",
+        "Lawn Care",
+        "Other"
+      ]
+    },
+    "customer_name": {
+      "type": "string",
+      "title": "Customer Name"
+    },
+    "customer_email": {
+      "type": "string",
+      "title": "Customer Email"
+    },
+    "customer_phone": {
+      "type": "string",
+      "title": "Customer Phone"
+    },
+    "customer_type": {
+      "type": "string",
+      "title": "Customer Type",
+      "enum": [
+        "Realtor",
+        "Homeowner"
+      ]
+    },
+    "job_title": {
+      "type": "string",
+      "title": "Job Title"
+    },
+    "job_description": {
+      "type": "string",
+      "title": "Job Description"
+    },
+    "address": {
+      "type": "string",
+      "title": "Job Address"
+    },
+    "city": {
+      "type": "string",
+      "title": "City"
+    },
+    "state": {
+      "type": "string",
+      "title": "State"
+    },
+    "zip": {
+      "type": "string",
+      "title": "Zip Code"
+    },
+    "preferred_date": {
+      "type": "string",
+      "title": "Preferred Date",
+      "format": "date"
+    },
+    "preferred_time": {
+      "type": "string",
+      "title": "Preferred Time",
+      "enum": [
+        "Morning (8am-12pm)",
+        "Afternoon (12pm-4pm)",
+        "Evening (4pm-8pm)",
+        "Flexible"
+      ]
+    },
+    "estimated_hours": {
+      "type": "number",
+      "title": "Estimated Hours"
+    },
+    "estimated_cost": {
+      "type": "number",
+      "title": "Estimated Cost ($)"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "pending",
+        "accepted",
+        "on_the_way",
+        "in_progress",
+        "completed",
+        "cancelled"
+      ],
+      "default": "pending"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Additional Notes"
+    },
+    "contractor_lat": {
+      "type": "number",
+      "title": "Contractor Latitude"
+    },
+    "contractor_lng": {
+      "type": "number",
+      "title": "Contractor Longitude"
+    },
+    "job_lat": {
+      "type": "number",
+      "title": "Job Location Latitude"
+    },
+    "job_lng": {
+      "type": "number",
+      "title": "Job Location Longitude"
+    },
+    "is_priority": {
+      "type": "boolean",
+      "title": "Priority Booking",
+      "default": false
+    },
+    "accepted_by_email": {
+      "type": "string",
+      "title": "Accepted By (Contractor Email)"
+    },
+    "accepted_by_name": {
+      "type": "string",
+      "title": "Accepted By (Contractor Name)"
+    },
+    "photo_urls": {
+      "type": "array",
+      "title": "Job Photos",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notified_30min": {
+      "type": "boolean",
+      "title": "Notified 30 Min Before",
+      "default": false
+    },
+    "notified_10min": {
+      "type": "boolean",
+      "title": "Notified 10 Min Before",
+      "default": false
+    }
+  },
+  "required": [
+    "job_title",
+    "address",
+    "preferred_date",
+    "category"
+  ],
+  "rls": {
+    "create": {
+      "created_by": "{{user.email}}"
+    },
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "data.accepted_by_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "data.accepted_by_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

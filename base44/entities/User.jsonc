@@ -1,0 +1,49 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "user"
+      ],
+      "default": "user"
+    },
+    "user_type": {
+      "type": "string",
+      "enum": [
+        "Homeowner",
+        "Realtor",
+        "Contractor",
+        "Business Owner",
+        "Handyman"
+      ],
+      "title": "User Type"
+    },
+    "plan": {
+      "type": "string",
+      "enum": [
+        "free",
+        "realtor_pro"
+      ],
+      "title": "Plan",
+      "default": "free"
+    },
+    "venmo_username": {
+      "type": "string",
+      "title": "Venmo Username"
+    },
+    "paypal_email": {
+      "type": "string",
+      "title": "PayPal Email"
+    },
+    "cashapp_cashtag": {
+      "type": "string",
+      "title": "Cash App $Cashtag"
+    }
+  },
+  "required": [
+    "user_type"
+  ]
+}

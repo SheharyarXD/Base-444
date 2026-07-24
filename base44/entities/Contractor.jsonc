@@ -1,0 +1,141 @@
+{
+  "name": "Contractor",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "title": "Full Name"
+    },
+    "photo": {
+      "type": "string",
+      "title": "Photo URL"
+    },
+    "category": {
+      "type": "string",
+      "title": "Category",
+      "enum": [
+        "Plumbing",
+        "Electrical",
+        "Cleaning",
+        "Painting",
+        "Landscaping",
+        "HVAC",
+        "Carpentry",
+        "Roofing",
+        "General Handyman",
+        "Moving",
+        "Mobile Mechanic",
+        "Mobile Detailer",
+        "Lawn Care",
+        "Other"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "title": "Bio / Description"
+    },
+    "hourly_rate": {
+      "type": "number",
+      "title": "Hourly Rate ($)"
+    },
+    "rating": {
+      "type": "number",
+      "title": "Average Rating",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "review_count": {
+      "type": "integer",
+      "title": "Number of Reviews",
+      "default": 0
+    },
+    "years_experience": {
+      "type": "integer",
+      "title": "Years of Experience"
+    },
+    "is_available": {
+      "type": "boolean",
+      "title": "Currently Available",
+      "default": true
+    },
+    "location": {
+      "type": "string",
+      "title": "Service Area"
+    },
+    "state": {
+      "type": "string",
+      "title": "License State"
+    },
+    "skills": {
+      "type": "array",
+      "title": "Skills / Specialties",
+      "items": {
+        "type": "string"
+      }
+    },
+    "completed_jobs": {
+      "type": "integer",
+      "title": "Completed Jobs",
+      "default": 0
+    },
+    "response_time": {
+      "type": "string",
+      "title": "Avg Response Time",
+      "enum": [
+        "Under 30 min",
+        "Under 1 hour",
+        "1-2 hours",
+        "2-4 hours",
+        "Same day"
+      ]
+    },
+    "is_verified_pro": {
+      "type": "boolean",
+      "title": "Verified Pro Badge",
+      "default": false
+    },
+    "preferred_zip_code": {
+      "type": "string",
+      "title": "Preferred Zip Code"
+    },
+    "preferred_miles_distance": {
+      "type": "number",
+      "title": "Preferred Miles Distance"
+    }
+  },
+  "required": [
+    "name",
+    "category",
+    "hourly_rate"
+  ],
+  "rls": {
+    "create": {
+      "created_by": "{{user.email}}"
+    },
+    "read": {},
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,153 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-heading: 'Plus Jakarta Sans', sans-serif;
+    --font-body: 'Inter', sans-serif;
+
+    --background: 220 20% 15%;
+    --foreground: 30 15% 92%;
+    --card: 220 20% 18%;
+    --card-foreground: 30 15% 92%;
+    --popover: 220 20% 18%;
+    --popover-foreground: 30 15% 92%;
+    --primary: 25 70% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 18% 28%;
+    --secondary-foreground: 30 15% 85%;
+    --muted: 220 15% 26%;
+    --muted-foreground: 30 10% 65%;
+    --accent: 37 65% 58%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 15% 26%;
+    --input: 220 15% 26%;
+    --ring: 25 70% 54%;
+    --chart-1: 25 70% 54%;
+    --chart-2: 100 35% 45%;
+    --chart-3: 37 65% 52%;
+    --chart-4: 20 40% 55%;
+    --chart-5: 10 50% 50%;
+    --radius: 0.75rem;
+    --sidebar-background: 220 20% 12%;
+    --sidebar-foreground: 30 15% 85%;
+    --sidebar-primary: 25 70% 54%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 18% 22%;
+    --sidebar-accent-foreground: 30 15% 85%;
+    --sidebar-border: 220 15% 26%;
+    --sidebar-ring: 25 70% 54%;
+  }
+
+  .dark {
+    --background: 222 47% 10%;
+    --foreground: 0 0% 98%;
+    --card: 222 47% 13%;
+    --card-foreground: 0 0% 98%;
+    --popover: 222 47% 13%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 25 70% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 100 35% 55%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 20 15% 28%;
+    --muted-foreground: 35 25% 70%;
+    --accent: 37 65% 62%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 222 30% 24%;
+    --input: 222 30% 24%;
+    --ring: 25 70% 54%;
+    --chart-1: 25 70% 54%;
+    --chart-2: 100 35% 55%;
+    --chart-3: 37 65% 62%;
+    --chart-4: 20 40% 65%;
+    --chart-5: 10 50% 60%;
+    --sidebar-background: 20 15% 14%;
+    --sidebar-foreground: 35 30% 90%;
+    --sidebar-primary: 25 70% 54%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 30% 20%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 222 30% 24%;
+    --sidebar-ring: 25 70% 54%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+    overscroll-behavior: none;
+  }
+
+  button, [role="tab"], nav, svg {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none !important;
+  }
+
+  .leaflet-container,
+  .leaflet-container *,
+  .leaflet-container .leaflet-tile,
+  .leaflet-container .leaflet-marker-icon,
+  .leaflet-container .leaflet-marker-shadow,
+  .leaflet-container .leaflet-control-zoom,
+  .leaflet-container .leaflet-control-zoom-in,
+  .leaflet-container .leaflet-control-zoom-out {
+    -webkit-user-select: auto !important;
+    -moz-user-select: auto !important;
+    -ms-user-select: auto !important;
+    user-select: auto !important;
+    -webkit-touch-callout: default !important;
+    touch-action: none !important;
+    pointer-events: auto !important;
+  }
+
+  .leaflet-container {
+    cursor: grab !important;
+  }
+
+  .leaflet-container:active {
+    cursor: grabbing !important;
+  }
+
+  input, textarea, p, span, [class*="message"], [class*="description"] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  input[type="date"]::-webkit-datetime-edit-text,
+  input[type="date"]::-webkit-datetime-edit-month-field,
+  input[type="date"]::-webkit-datetime-edit-day-field,
+  input[type="date"]::-webkit-datetime-edit-year-field {
+    color: hsl(var(--muted-foreground));
+  }
+
+  input[type="date"]:not([value=""])::-webkit-datetime-edit-month-field,
+  input[type="date"]:not([value=""])::-webkit-datetime-edit-day-field,
+  input[type="date"]:not([value=""])::-webkit-datetime-edit-year-field {
+    color: hsl(var(--foreground));
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(70%);
+    opacity: 0.6;
+    cursor: pointer;
+  }
+}
