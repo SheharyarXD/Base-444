@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Calendar, MapPin, Clock, User, DollarSign, Phone, FileText, MessageCircle, Navigation, Car, X, Download, Camera } from "lucide-react";
+import { ArrowLeft, Calendar, MapPin, Clock, MessageCircle, Navigation, Car, X, Download, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { base44 } from "@/api/base44Client";
 import AddressMap from "../components/AddressMap";
@@ -14,6 +13,8 @@ import { toast } from "sonner";
 import moment from "moment";
 import { motion } from "framer-motion";
 import { haversineFeet } from "@/lib/geo";
+import { canViewFullJobDetails, maskedCityStateZip } from "@/lib/jobPrivacy";
+import { isProviderEligibleForJob } from "@/lib/matching";
 
 const statusStyles = {
   pending: "bg-amber-50 text-amber-700 border-amber-200",
@@ -55,6 +56,7 @@ export default function BookingDetail() {
   const [reviewFormOpen, setReviewFormOpen] = useState(false);
   const [contractorBusinessName, setContractorBusinessName] = useState("");
   const [contractorEntityId, setContractorEntityId] = useState(null);
+  const [viewerContractor, setViewerContractor] = useState(null);
 
   function checkProximity(bookingData, userCoords) {
     if (!bookingData?.contractor_lat || !bookingData?.contractor_lng || !userCoords || nearbyAlerted) return;
@@ -71,6 +73,18 @@ export default function BookingDetail() {
       setBooking(b);
       setUser(me);
       setLoading(false);
+
+      // Needed to gate the Accept button / chat on a still-pending job to
+      // only the providers who are actually eligible for it — pending jobs
+      // are readable by any authenticated user (see Booking.jsonc RLS), so
+      // an unrelated or wrong-category provider could otherwise land here
+      // directly via URL and see the accept/chat UI for a job that isn't
+      // theirs to act on.
+      if (b?.status === "pending" && ["Contractor", "Handyman"].includes(me?.user_type)) {
+        base44.entities.Contractor.filter({ created_by: me.email }).then(contractors => {
+          setViewerContractor(contractors[0] || null);
+        }).catch(() => {});
+      }
 
       // Fetch contractor's business name and entity ID if booking has an accepted contractor
       if (b?.accepted_by_email) {
@@ -221,7 +235,7 @@ export default function BookingDetail() {
     try {
       const res = await base44.functions.invoke('generateJobSummaryPDF', { bookingId: id });
       const signedUrl = await base44.integrations.Core.CreateFileSignedUrl({ file_uri: res.data.file_uri });
-      window.open(signedUrl.data.signed_url, '_blank');
+      window.open(signedUrl.signed_url, '_blank');
       toast.success('Summary downloaded!');
     } catch (error) {
       toast.error('Failed to download summary');
@@ -299,6 +313,18 @@ export default function BookingDetail() {
   const isCustomer = user && booking.customer_email === user.email;
   const isContractorOrHandyman = ["Contractor", "Handyman"].includes(user?.user_type);
   const profileIncomplete = isContractorOrHandyman && (!user?.ein || !user?.ein?.trim());
+  // Booking reads are visible to any authenticated user while a job is still
+  // "pending" (needed for open-job discovery in JobsMap), so a still-pending
+  // booking's exact address must stay masked here too for anyone who isn't
+  // the customer or the provider who accepted it — mirrors JobDetailsModal.
+  const canViewFull = canViewFullJobDetails(booking, user?.email);
+  // For a still-pending job, only show the accept/chat UI to a provider who
+  // is actually eligible for it (right category, or the specific direct-
+  // booking target) — once a job is no longer pending, RLS already limits
+  // who can even load this page to the customer/accepted provider/admin.
+  const isEligiblePendingProvider =
+    isContractorOrHandyman && isProviderEligibleForJob(viewerContractor, booking);
+  const canShowChat = isCustomer || booking.status !== "pending" || isEligiblePendingProvider;
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 pb-24 md:pb-12">
@@ -437,21 +463,30 @@ export default function BookingDetail() {
               <MapPin className="w-4 h-4 text-primary mt-0.5" />
               <div>
                 <p className="font-semibold">Address</p>
-                <p className="text-muted-foreground">{booking.address}</p>
-                <p className="text-muted-foreground">{booking.city}, {booking.state} {booking.zip}</p>
-                <a
-                  href={`https://maps.google.com/?q=${encodeURIComponent(`${booking.address}, ${booking.city}, ${booking.state} ${booking.zip}`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
-                >
-                  <Navigation className="w-3 h-3" />
-                  Open in Maps
-                </a>
+                {canViewFull ? (
+                  <>
+                    <p className="text-muted-foreground">{booking.address}</p>
+                    <p className="text-muted-foreground">{booking.city}, {booking.state} {booking.zip}</p>
+                    <a
+                      href={`https://maps.google.com/?q=${encodeURIComponent(`${booking.address}, ${booking.city}, ${booking.state} ${booking.zip}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+                    >
+                      <Navigation className="w-3 h-3" />
+                      Open in Maps
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-muted-foreground">{maskedCityStateZip(booking)}</p>
+                    <p className="text-xs text-muted-foreground italic mt-0.5">Exact address shared once you accept</p>
+                  </>
+                )}
               </div>
             </div>
           </div>
-          {booking.address && booking.status !== "on_the_way" && (
+          {booking.address && booking.status !== "on_the_way" && canViewFull && (
             <div className="pt-4 border-t border-border">
               <AddressMap address={booking.address} />
             </div>
@@ -543,7 +578,7 @@ export default function BookingDetail() {
         )}
 
         {/* Chat */}
-        {user && !profileIncomplete && <BookingChat bookingId={id} currentUser={user} booking={{ ...booking, contractor_business_name: contractorBusinessName, contractor_id: contractorEntityId || booking.contractor_id }} isCustomer={isCustomer} />}
+        {user && !profileIncomplete && canShowChat && <BookingChat bookingId={id} currentUser={user} booking={{ ...booking, contractor_business_name: contractorBusinessName, contractor_id: contractorEntityId || booking.contractor_id }} isCustomer={isCustomer} />}
         {profileIncomplete && (
           <div className="bg-amber-50 dark:bg-amber-950 border border-amber-300 dark:border-amber-700 rounded-2xl p-5">
             <p className="font-semibold text-amber-800 dark:text-amber-200 mb-1">⚠️ Profile Incomplete</p>
@@ -616,7 +651,7 @@ export default function BookingDetail() {
               </Button>
             )}
 
-            {booking.status === "pending" && isContractorOrHandyman && !profileIncomplete && !booking.accepted_by_email && (
+            {booking.status === "pending" && isContractorOrHandyman && isEligiblePendingProvider && !profileIncomplete && !booking.accepted_by_email && (
               <Dialog open={acceptDialogOpen} onOpenChange={setAcceptDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="flex-1 rounded-2xl h-12 min-h-[44px] font-heading font-bold bg-emerald-600 hover:bg-emerald-700 text-white">

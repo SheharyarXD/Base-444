@@ -5,6 +5,7 @@ import { MapPin, Calendar, Clock, DollarSign, Phone, Mail, FileText, Loader2, Ch
 import moment from "moment";
 import { base44 } from "@/api/base44Client";
 import AddressMap from "./AddressMap";
+import { canViewFullJobDetails, maskedCityStateZip } from "@/lib/jobPrivacy";
 
 export default function JobDetailsModal({ job, open, onOpenChange, onAccept, accepting }) {
   const [messages, setMessages] = useState([]);
@@ -22,6 +23,11 @@ export default function JobDetailsModal({ job, open, onOpenChange, onAccept, acc
 
   const isContractorOrHandyman = ["Contractor", "Handyman"].includes(user?.user_type);
   const profileIncomplete = isContractorOrHandyman && (!user?.ein || !user?.ein?.trim());
+  // Job posts are visible to every eligible provider before acceptance (see
+  // JobsMap.jsx), but the customer's contact info and exact address should
+  // only be shown to the customer themself or the provider who accepted —
+  // not to every provider still deciding whether to accept.
+  const canViewFull = canViewFullJobDetails(job, user?.email);
 
   async function loadMessages() {
     if (!job?.id) return;
@@ -84,23 +90,31 @@ export default function JobDetailsModal({ job, open, onOpenChange, onAccept, acc
                 <span className="text-muted-foreground">Name:</span>
                 <span className="font-medium">{job.customer_name}</span>
               </div>
-              {job.customer_phone && (
-                <a
-                  href={`tel:${job.customer_phone}`}
-                  className="flex items-center gap-2 text-primary hover:underline"
-                >
-                  <Phone className="w-4 h-4" />
-                  {job.customer_phone}
-                </a>
-              )}
-              {job.customer_email && (
-                <a
-                  href={`mailto:${job.customer_email}`}
-                  className="flex items-center gap-2 text-primary hover:underline"
-                >
-                  <Mail className="w-4 h-4" />
-                  {job.customer_email}
-                </a>
+              {canViewFull ? (
+                <>
+                  {job.customer_phone && (
+                    <a
+                      href={`tel:${job.customer_phone}`}
+                      className="flex items-center gap-2 text-primary hover:underline"
+                    >
+                      <Phone className="w-4 h-4" />
+                      {job.customer_phone}
+                    </a>
+                  )}
+                  {job.customer_email && (
+                    <a
+                      href={`mailto:${job.customer_email}`}
+                      className="flex items-center gap-2 text-primary hover:underline"
+                    >
+                      <Mail className="w-4 h-4" />
+                      {job.customer_email}
+                    </a>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">
+                  Contact info is shared once you accept this job.
+                </p>
               )}
             </div>
           </div>
@@ -111,8 +125,17 @@ export default function JobDetailsModal({ job, open, onOpenChange, onAccept, acc
               <MapPin className="w-4 h-4 text-primary mt-0.5 shrink-0" />
               <div>
                 <p className="font-semibold">Address</p>
-                <p className="text-muted-foreground">{job.address}</p>
-                <p className="text-muted-foreground">{job.city}, {job.state} {job.zip}</p>
+                {canViewFull ? (
+                  <>
+                    <p className="text-muted-foreground">{job.address}</p>
+                    <p className="text-muted-foreground">{job.city}, {job.state} {job.zip}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-muted-foreground">{maskedCityStateZip(job)}</p>
+                    <p className="text-xs text-muted-foreground italic mt-0.5">Exact address shared once you accept</p>
+                  </>
+                )}
               </div>
             </div>
 
@@ -173,8 +196,8 @@ export default function JobDetailsModal({ job, open, onOpenChange, onAccept, acc
             </div>
           )}
 
-          {/* Map */}
-          {job.address && (
+          {/* Map — only pinpoints the exact address once the viewer is entitled to it */}
+          {job.address && canViewFull && (
             <div>
               <p className="font-semibold text-sm mb-2">Location</p>
               <AddressMap address={job.address} />

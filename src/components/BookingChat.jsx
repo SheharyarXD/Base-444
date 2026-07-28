@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { Send } from "lucide-react";
-import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 
 function recipientFor(booking, isCustomer) {

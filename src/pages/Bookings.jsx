@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { CalendarCheck, Clock, CheckCircle, XCircle, RefreshCw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import BookingCard from "../components/BookingCard";
 import { motion } from "framer-motion";

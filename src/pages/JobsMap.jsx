@@ -5,12 +5,11 @@ import Map3DBackground from "../components/Map3DBackground";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { base44 } from "@/api/base44Client";
-import { MapPin, Navigation, Loader2, Search, CheckCircle } from "lucide-react";
-import moment from "moment";
+import { MapPin, Navigation, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import JobDetailsModal from "../components/JobDetailsModal";
 import { haversineMiles, geocodeAddress } from "@/lib/geo";
-import { isProviderEligibleForJob } from "@/lib/matching";
+import { isProviderEligibleForJob, filterJobsForViewer } from "@/lib/matching";
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -140,9 +139,7 @@ export default function JobsMap() {
     // bookings are stamped with category = target contractor's category, see
     // BookContractor.jsx). Drop those here so a provider never sees another
     // provider's direct-booking job (customer PII, photos, address).
-    const jobs = viewerContractor
-      ? rawJobs.filter((job) => isProviderEligibleForJob(viewerContractor, job))
-      : rawJobs;
+    const jobs = filterJobsForViewer(rawJobs, viewerContractor);
     const results = [];
     for (const job of jobs) {
       const coords = await resolveJobCoords(job);
@@ -341,7 +338,7 @@ export default function JobsMap() {
             />
           </div>
           <button
-            onClick={handleZipSearch}
+            onClick={() => handleZipSearch()}
             disabled={zipLoading}
             className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-60 flex items-center gap-1"
           >

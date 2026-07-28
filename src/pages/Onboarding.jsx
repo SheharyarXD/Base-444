@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Home, Briefcase, Building2, Shield, Wrench, ArrowRight, Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { motion } from "framer-motion";

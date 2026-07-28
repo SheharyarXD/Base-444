@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Shield, Clock, Star, Zap, Home as HomeIcon, Briefcase, Building2, Wrench } from "lucide-react";
+import { Shield, Clock, Star, Zap } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { motion } from "framer-motion";
 

@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { MessageCircle, ChevronRight } from "lucide-react";
 import { base44 } from "@/api/base44Client";
-import { Badge } from "@/components/ui/badge";
 import moment from "moment";
 import { motion } from "framer-motion";
 
@@ -52,7 +51,7 @@ export default function Inbox() {
       // Filter to only bookings that have messages, sort by latest message
       const valid = threadData
         .filter(Boolean)
-        .sort((a, b) => new Date(b.latestMessage.created_date) - new Date(a.latestMessage.created_date));
+        .sort((a, b) => new Date(b.latestMessage.created_date).getTime() - new Date(a.latestMessage.created_date).getTime());
 
       setThreads(valid);
       setLoading(false);

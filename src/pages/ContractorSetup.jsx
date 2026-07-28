@@ -218,7 +218,7 @@ export default function ContractorSetup() {
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               placeholder="Tell customers about yourself..."
-              rows="3"
+              rows={3}
               className="w-full px-4 py-2.5 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 resize-none"
             />
           </div>

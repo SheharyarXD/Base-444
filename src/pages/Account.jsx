@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Mail, LogOut, Shield, CalendarCheck, Star, Home, Briefcase, Building2, Bell, Moon, Lock, Camera, DollarSign, Share2, Copy, Check, FileText, X, ExternalLink, ChevronDown } from "lucide-react";
+import { Mail, LogOut, Shield, CalendarCheck, Star, Bell, Moon, Lock, Camera, Share2, Copy, Check, FileText, ExternalLink, ChevronDown } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CheckCircle, Shield, Building2, Zap, Crown, Star, Briefcase, Wrench } from "lucide-react";
+import { CheckCircle, Shield, Zap, Crown, Star, Briefcase, Wrench } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
