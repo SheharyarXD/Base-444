@@ -130,10 +130,19 @@ export default function JobsMap() {
     return geocodeAddress(job.address);
   }
 
-  async function loadPendingJobs(categoryFilter) {
+  async function loadPendingJobs(viewerContractor) {
     setLoading(true);
+    const categoryFilter = viewerContractor?.category;
     const filter = categoryFilter ? { status: "pending", category: categoryFilter } : { status: "pending" };
-    const jobs = await base44.entities.Booking.filter(filter, "-created_date", JOBS_FETCH_LIMIT);
+    const rawJobs = await base44.entities.Booking.filter(filter, "-created_date", JOBS_FETCH_LIMIT);
+    // The category filter above also matches direct bookings targeted at a
+    // *different* contractor who happens to share the same category (direct
+    // bookings are stamped with category = target contractor's category, see
+    // BookContractor.jsx). Drop those here so a provider never sees another
+    // provider's direct-booking job (customer PII, photos, address).
+    const jobs = viewerContractor
+      ? rawJobs.filter((job) => isProviderEligibleForJob(viewerContractor, job))
+      : rawJobs;
     const results = [];
     for (const job of jobs) {
       const coords = await resolveJobCoords(job);
@@ -175,9 +184,11 @@ export default function JobsMap() {
           // normally happen once /contractor-setup gating is in place, but
           // guard anyway rather than showing every job in existence.
           setProfileIncompleteForJobs(true);
+          setLoading(false);
+          return;
         }
       }
-      await loadPendingJobs(myContractor?.category);
+      await loadPendingJobs(myContractor);
     }).catch(() => { loadPendingJobs(); });
 
     navigator.geolocation?.getCurrentPosition(

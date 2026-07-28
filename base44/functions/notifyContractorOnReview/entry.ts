@@ -22,8 +22,8 @@ Deno.serve(async (req) => {
     }
     const contractor = contractors[0];
 
-    // Get the contractor's user email
-    const users = await base44.asServiceRole.entities.User.filter({ id: contractor.created_by });
+    // Get the contractor's user email (created_by is the owning user's email, not their id)
+    const users = await base44.asServiceRole.entities.User.filter({ email: contractor.created_by });
     if (!users.length) {
       console.log('Contractor user not found');
       return Response.json({ error: 'Contractor user not found' }, { status: 404 });

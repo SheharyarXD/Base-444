@@ -14,6 +14,10 @@
       "type": "string",
       "title": "Sender Name"
     },
+    "recipient_email": {
+      "type": "string",
+      "title": "Recipient Email"
+    },
     "content": {
       "type": "string",
       "title": "Message Content"
@@ -32,6 +36,9 @@
       "$or": [
         {
           "data.sender_email": "{{user.email}}"
+        },
+        {
+          "data.recipient_email": "{{user.email}}"
         },
         {
           "user_condition": {

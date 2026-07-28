@@ -21,9 +21,17 @@ export default function Inbox() {
       let bookings = [];
       if (isContractor) {
         bookings = await base44.entities.Booking.filter({ accepted_by_email: me.email }, "-updated_date", 100);
-        // Also get pending bookings they've messaged on
-        const pendingAll = await base44.entities.Booking.filter({}, "-updated_date", 200);
-        bookings = [...bookings, ...pendingAll.filter(b => !bookings.find(x => x.id === b.id))];
+        // Also pick up bookings they've messaged on but haven't accepted yet
+        // (e.g. messaged a customer on a still-pending job). Scoped to this
+        // user's own sent messages rather than scanning every booking.
+        const myMessages = await base44.entities.Message.filter({ sender_email: me.email }, "-created_date", 200);
+        const extraBookingIds = [...new Set(myMessages.map(m => m.booking_id))].filter(
+          id => !bookings.find(b => b.id === id)
+        );
+        const extraBookings = await Promise.all(
+          extraBookingIds.map(id => base44.entities.Booking.get(id).catch(() => null))
+        );
+        bookings = [...bookings, ...extraBookings.filter(Boolean)];
       } else {
         bookings = await base44.entities.Booking.filter({ created_by: me.email }, "-updated_date", 100);
       }

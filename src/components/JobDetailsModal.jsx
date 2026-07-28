@@ -38,6 +38,7 @@ export default function JobDetailsModal({ job, open, onOpenChange, onAccept, acc
       booking_id: job.id,
       sender_email: user.email,
       sender_name: user.full_name,
+      recipient_email: job.customer_email,
       content: messageInput,
     });
     setMessageInput("");

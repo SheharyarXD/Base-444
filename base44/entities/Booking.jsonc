@@ -184,6 +184,9 @@
           "data.accepted_by_email": "{{user.email}}"
         },
         {
+          "data.status": "pending"
+        },
+        {
           "user_condition": {
             "role": "admin"
           }

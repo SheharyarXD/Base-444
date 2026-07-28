@@ -3,6 +3,10 @@ import { Send } from "lucide-react";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 
+function recipientFor(booking, isCustomer) {
+  return isCustomer ? booking?.accepted_by_email : booking?.customer_email;
+}
+
 export default function BookingChat({ bookingId, currentUser, booking, isCustomer }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -34,11 +38,13 @@ export default function BookingChat({ bookingId, currentUser, booking, isCustome
     setSending(true);
     const tempId = `temp-${Date.now()}`;
     setOptimisticId(tempId);
+    const recipient_email = recipientFor(booking, isCustomer);
     setMessages(prev => [...prev, {
       id: tempId,
       booking_id: bookingId,
       sender_email: currentUser.email,
       sender_name: currentUser.full_name || currentUser.email,
+      recipient_email,
       content: text,
       created_date: new Date().toISOString(),
     }]);
@@ -47,6 +53,7 @@ export default function BookingChat({ bookingId, currentUser, booking, isCustome
         booking_id: bookingId,
         sender_email: currentUser.email,
         sender_name: currentUser.full_name || currentUser.email,
+        recipient_email,
         content: text,
       });
     } catch (error) {

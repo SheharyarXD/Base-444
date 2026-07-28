@@ -3,6 +3,20 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const WIX_API_KEY = Deno.env.get("WIX_PAYMENTS_API_KEY");
 const WIX_SITE_ID = Deno.env.get("WIX_PAYMENTS_SITE_ID");
 
+// Server-side source of truth for plan pricing — must be kept in sync with
+// the `plans` array in src/pages/Plans.jsx. The client used to be trusted
+// for `planName`/`price`/`isSubscription` directly, which let anyone call
+// this function with an arbitrary price and pay whatever they chose for any
+// plan. Only `planId` is taken from the client now; everything charged is
+// looked up here.
+const PLANS = {
+  priority_booking: { name: "Priority Booking", price: 2.99, isSubscription: false },
+  verified_pro: { name: "Verified Pro Badge", price: 9.99, isSubscription: false },
+  handyman_pro: { name: "Handyman Pro", price: 12.99, isSubscription: true },
+  featured_listing: { name: "Featured Listing", price: 1.99, isSubscription: false },
+  business_pro: { name: "Business Pro Plan", price: 14.99, isSubscription: true },
+};
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -11,7 +25,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { planId, planName, price, isSubscription } = await req.json();
+    const { planId } = await req.json();
+    const plan = PLANS[planId];
+    if (!plan) {
+      return Response.json({ error: "Unknown plan" }, { status: 400 });
+    }
+    const { name: planName, price, isSubscription } = plan;
     const origin = req.headers.get("Origin") || "https://app.base44.app";
 
     const item = {
