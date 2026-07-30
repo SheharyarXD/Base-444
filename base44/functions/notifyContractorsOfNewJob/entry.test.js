@@ -129,4 +129,40 @@ describe("notifyContractorsOfNewJob", () => {
     await handler(makeReq({ event: { type: "create", data: { ...openJob, category: "Electrical" } } }));
     expect(mockClient.asServiceRole.integrations.Core.SendEmail).not.toHaveBeenCalled();
   });
+
+  // The notification path only ever forwards whatever category the booking
+  // carries into the DB filter — it has no hardcoded category allowlist, so
+  // newly added categories need no code change here, only test coverage.
+  it("routes notifications correctly for the newly added 'Pressure Washing Services' category", async () => {
+    mockClient.asServiceRole.entities.Contractor.filter.mockImplementation(async (query) => {
+      if (query.category !== "Pressure Washing Services") return [];
+      return [{ created_by: "washer@x.com" }];
+    });
+    mockClient.asServiceRole.entities.User.filter.mockImplementation(async ({ email }) => [{ email }]);
+    const res = await handler(
+      makeReq({ event: { type: "create", data: { ...openJob, category: "Pressure Washing Services" } } })
+    );
+    const body = await res.json();
+    expect(mockClient.asServiceRole.entities.Contractor.filter).toHaveBeenCalledWith(
+      { preferred_zip_code: "10001", category: "Pressure Washing Services" },
+      "-created_date",
+      100
+    );
+    expect(mockClient.asServiceRole.integrations.Core.SendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "washer@x.com" })
+    );
+    expect(body.contractorsNotified).toBe(1);
+  });
+
+  it("routes notifications correctly for the newly added 'Contractors' category", async () => {
+    mockClient.asServiceRole.entities.Contractor.filter.mockImplementation(async (query) => {
+      if (query.category !== "Contractors") return [];
+      return [{ created_by: "gc@x.com" }];
+    });
+    mockClient.asServiceRole.entities.User.filter.mockImplementation(async ({ email }) => [{ email }]);
+    await handler(makeReq({ event: { type: "create", data: { ...openJob, category: "Contractors" } } }));
+    expect(mockClient.asServiceRole.integrations.Core.SendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "gc@x.com" })
+    );
+  });
 });

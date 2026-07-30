@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Wrench, Zap, Sparkles, Paintbrush, TreePine, Wind, Hammer, Home, Package, Truck } from "lucide-react";
+import { Wrench, Zap, Sparkles, Paintbrush, TreePine, Wind, Hammer, Home, Package, Truck, Car, SprayCan, Building2, Droplets } from "lucide-react";
 
 const categoryIcons = {
   "Plumbing": Wrench,
@@ -12,6 +12,12 @@ const categoryIcons = {
   "Roofing": Home,
   "General Handyman": Package,
   "Moving": Truck,
+  "Mobile Mechanic": Car,
+  "Mobile Detailer": SprayCan,
+  "Lawn Care": TreePine,
+  "Other": Package,
+  "Contractors": Building2,
+  "Pressure Washing Services": Droplets,
 };
 
 const categoryColors = {
@@ -25,6 +31,12 @@ const categoryColors = {
   "Roofing": "bg-red-50 text-red-600",
   "General Handyman": "bg-slate-50 text-slate-600",
   "Moving": "bg-indigo-50 text-indigo-600",
+  "Mobile Mechanic": "bg-rose-50 text-rose-600",
+  "Mobile Detailer": "bg-teal-50 text-teal-600",
+  "Lawn Care": "bg-lime-50 text-lime-600",
+  "Other": "bg-gray-50 text-gray-600",
+  "Contractors": "bg-sky-50 text-sky-600",
+  "Pressure Washing Services": "bg-violet-50 text-violet-600",
 };
 
 export default function CategoryCard({ category }) {

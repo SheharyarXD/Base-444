@@ -34,6 +34,27 @@ describe("isProviderEligibleForJob", () => {
     expect(isProviderEligibleForJob(null, { category: "Mobile Mechanic" })).toBe(false);
     expect(isProviderEligibleForJob(mechanic, null)).toBe(false);
   });
+
+  // Newly added categories (client's expanded marketplace request) must
+  // participate in eligibility exactly like every pre-existing category —
+  // no special-casing anywhere in isProviderEligibleForJob's logic.
+  it("matches the new 'Contractors' category on an open job", () => {
+    const generalContractor = { id: "c4", category: "Contractors" };
+    expect(isProviderEligibleForJob(generalContractor, { category: "Contractors" })).toBe(true);
+    expect(isProviderEligibleForJob(generalContractor, { category: "Pressure Washing Services" })).toBe(false);
+  });
+
+  it("matches the new 'Pressure Washing Services' category on an open job", () => {
+    const pressureWasher = { id: "c5", category: "Pressure Washing Services" };
+    expect(isProviderEligibleForJob(pressureWasher, { category: "Pressure Washing Services" })).toBe(true);
+    expect(isProviderEligibleForJob(pressureWasher, { category: "Contractors" })).toBe(false);
+  });
+
+  it("honors a direct booking to a new-category contractor regardless of the booking's stamped category", () => {
+    const pressureWasher = { id: "c5", category: "Pressure Washing Services" };
+    const job = { contractor_id: "c5", category: "Pressure Washing Services" };
+    expect(isProviderEligibleForJob(pressureWasher, job)).toBe(true);
+  });
 });
 
 // Regression coverage for the JobsMap PII leak found in the Phase 1 audit:
@@ -60,5 +81,16 @@ describe("filterJobsForViewer", () => {
   it("returns an empty list for a viewer whose category matches nothing and who was targeted by nothing", () => {
     const otherCategoryContractor = { id: "c3", category: "Roofing" };
     expect(filterJobsForViewer(rawJobs, otherCategoryContractor)).toEqual([]);
+  });
+
+  it("correctly scopes a viewer in one of the newly added categories", () => {
+    const pressureWasher = { id: "c5", category: "Pressure Washing Services" };
+    const jobs = [
+      { id: "j4", category: "Pressure Washing Services" },
+      { id: "j5", category: "Contractors" },
+      { id: "j6", category: "Pressure Washing Services", contractor_id: "someone-else" },
+    ];
+    const result = filterJobsForViewer(jobs, pressureWasher).map((j) => j.id);
+    expect(result).toEqual(["j4"]);
   });
 });

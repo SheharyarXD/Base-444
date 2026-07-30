@@ -19,4 +19,6 @@ export const SERVICE_CATEGORIES = [
   "Mobile Detailer",
   "Lawn Care",
   "Other",
+  "Contractors",
+  "Pressure Washing Services",
 ];

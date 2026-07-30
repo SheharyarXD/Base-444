@@ -143,4 +143,37 @@ describe("acceptJob", () => {
     const res = await handler(makeReq({ bookingId: "b1" }));
     expect(res.status).toBe(500);
   });
+
+  // acceptJob's eligibility check is a plain string comparison against
+  // whatever category the booking/contractor carry — no hardcoded category
+  // allowlist — so newly added categories need no code change, only test
+  // coverage confirming they route through the same logic correctly.
+  it("accepts an eligible open job in the newly added 'Pressure Washing Services' category", async () => {
+    mockClient.auth.me.mockResolvedValue({ email: "c@x.com", user_type: "Contractor", full_name: "Wanda Washer" });
+    mockClient.asServiceRole.entities.Booking.get.mockResolvedValue({
+      id: "b2", status: "pending", category: "Pressure Washing Services",
+    });
+    mockClient.asServiceRole.entities.Contractor.filter.mockResolvedValue([
+      { id: "con2", category: "Pressure Washing Services" },
+    ]);
+    mockClient.asServiceRole.entities.Booking.update.mockResolvedValue({ id: "b2", status: "on_the_way" });
+
+    const res = await handler(makeReq({ bookingId: "b2" }));
+    expect(res.status ?? 200).toBe(200);
+    expect(mockClient.asServiceRole.entities.Booking.update).toHaveBeenCalledWith("b2", expect.objectContaining({
+      status: "on_the_way",
+      accepted_by_email: "c@x.com",
+    }));
+  });
+
+  it("403s a 'Contractors'-category contractor attempting an open job in the newly added 'Pressure Washing Services' category", async () => {
+    mockClient.auth.me.mockResolvedValue({ email: "c@x.com", user_type: "Contractor" });
+    mockClient.asServiceRole.entities.Booking.get.mockResolvedValue({
+      id: "b2", status: "pending", category: "Pressure Washing Services",
+    });
+    mockClient.asServiceRole.entities.Contractor.filter.mockResolvedValue([{ id: "con2", category: "Contractors" }]);
+
+    const res = await handler(makeReq({ bookingId: "b2" }));
+    expect(res.status).toBe(403);
+  });
 });

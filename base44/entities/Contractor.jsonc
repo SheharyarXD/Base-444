@@ -27,7 +27,9 @@
         "Mobile Mechanic",
         "Mobile Detailer",
         "Lawn Care",
-        "Other"
+        "Other",
+        "Contractors",
+        "Pressure Washing Services"
       ]
     },
     "description": {

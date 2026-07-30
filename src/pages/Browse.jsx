@@ -5,11 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { base44 } from "@/api/base44Client";
 import ContractorCard from "../components/ContractorCard";
 import { motion } from "framer-motion";
-
-const allCategories = [
-  "Plumbing", "Electrical", "Cleaning", "Painting", "Landscaping",
-  "HVAC", "Carpentry", "Roofing", "General Handyman", "Moving"
-];
+import { SERVICE_CATEGORIES } from "@/lib/serviceCategories";
 
 export default function Browse() {
   const [contractors, setContractors] = useState([]);
@@ -173,7 +169,7 @@ export default function Browse() {
         >
           All
         </Badge>
-        {allCategories.map((cat, idx) => {
+        {SERVICE_CATEGORIES.map((cat, idx) => {
           const colors = ['bg-blue-100 text-blue-700 hover:bg-blue-200', 'bg-purple-100 text-purple-700 hover:bg-purple-200', 'bg-pink-100 text-pink-700 hover:bg-pink-200', 'bg-green-100 text-green-700 hover:bg-green-200', 'bg-amber-100 text-amber-700 hover:bg-amber-200'];
           const color = colors[idx % colors.length];
           return (
