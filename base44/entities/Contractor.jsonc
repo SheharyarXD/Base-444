@@ -103,6 +103,39 @@
     "preferred_miles_distance": {
       "type": "number",
       "title": "Preferred Miles Distance"
+    },
+    "license_number": {
+      "type": "string",
+      "title": "Contractor License Number"
+    },
+    "business_name": {
+      "type": "string",
+      "title": "Business Name"
+    },
+    "ein_number": {
+      "type": "string",
+      "title": "LLC / EIN Number"
+    },
+    "verification_status": {
+      "type": "string",
+      "title": "Verification Status",
+      "enum": [
+        "not_submitted",
+        "pending",
+        "verified",
+        "rejected"
+      ],
+      "default": "not_submitted"
+    },
+    "verification_submitted_date": {
+      "type": "string",
+      "title": "Verification Submitted Date",
+      "format": "date-time"
+    },
+    "verification_notes": {
+      "type": "string",
+      "title": "Verification Notes",
+      "description": "Reviewer-facing notes (e.g. reason for rejection). Set by the verification workflow, not the contractor."
     }
   },
   "required": [

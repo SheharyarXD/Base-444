@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { CalendarCheck, Clock, CheckCircle, XCircle, RefreshCw } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import BookingCard from "../components/BookingCard";
+import ReminderBanner, { useActiveReminders } from "../components/ReminderBanner";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 
@@ -21,6 +22,7 @@ export default function Bookings() {
   const [refreshing, setRefreshing] = useState(false);
   const [messagesByBooking, setMessagesByBooking] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
+  const { reminders, dismiss: dismissReminder } = useActiveReminders({ recipientEmail: isContractor ? currentUser?.email : undefined });
 
   useEffect(() => {
     async function load() {
@@ -127,6 +129,10 @@ export default function Bookings() {
           <p className="text-muted-foreground text-sm">{bookings.length} total bookings</p>
         </div>
       </div>
+
+      {isContractor && reminders.length > 0 && (
+        <ReminderBanner reminders={reminders} onDismiss={dismissReminder} className="mb-6" />
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 bg-secondary rounded-2xl p-1">

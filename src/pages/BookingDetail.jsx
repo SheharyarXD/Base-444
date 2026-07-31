@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Calendar, MapPin, Clock, MessageCircle, Navigation, Car, X, Download, Camera } from "lucide-react";
+import { ArrowLeft, Calendar, MapPin, Clock, MessageCircle, Navigation, Car, X, Download, Camera, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -9,6 +9,7 @@ import AddressMap from "../components/AddressMap";
 import TrackingMap from "../components/TrackingMap";
 import BookingChat from "../components/BookingChat";
 import ReviewForm from "../components/ReviewForm";
+import ReminderBanner, { useActiveReminders } from "../components/ReminderBanner";
 import { toast } from "sonner";
 import moment from "moment";
 import { motion } from "framer-motion";
@@ -44,6 +45,7 @@ export default function BookingDetail() {
   const [nearbyAlerted, setNearbyAlerted] = useState(false);
   const [acceptDialogOpen, setAcceptDialogOpen] = useState(false);
   const [accepting, setAccepting] = useState(false);
+  const [startingOnTheWay, setStartingOnTheWay] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [optimisticStatus, setOptimisticStatus] = useState(null);
@@ -57,6 +59,11 @@ export default function BookingDetail() {
   const [contractorBusinessName, setContractorBusinessName] = useState("");
   const [contractorEntityId, setContractorEntityId] = useState(null);
   const [viewerContractor, setViewerContractor] = useState(null);
+  const { reminders, dismiss: dismissReminder } = useActiveReminders({
+    recipientEmail: user?.email,
+    bookingId: id,
+    type: "on_the_way_pending",
+  });
 
   function checkProximity(bookingData, userCoords) {
     if (!bookingData?.contractor_lat || !bookingData?.contractor_lng || !userCoords || nearbyAlerted) return;
@@ -211,7 +218,7 @@ export default function BookingDetail() {
 
   async function acceptBooking() {
     setAccepting(true);
-    setOptimisticStatus("on_the_way");
+    setOptimisticStatus("accepted");
     try {
       const res = await base44.functions.invoke('acceptJob', { bookingId: id });
       if (res.data?.error) {
@@ -219,14 +226,32 @@ export default function BookingDetail() {
         toast.error(res.data.error);
         return;
       }
-      setBooking({ ...booking, status: "on_the_way", accepted_by_email: user.email, accepted_by_name: user.full_name });
+      setBooking({ ...booking, status: "accepted", accepted_by_email: user.email, accepted_by_name: user.full_name });
       setAcceptDialogOpen(false);
-      toast.success("Job accepted! Customer has been notified you're on the way.");
+      toast.success("Job accepted! You can now message the customer to confirm details before heading over.");
     } catch (error) {
       setOptimisticStatus(null);
       toast.error(error?.response?.data?.error || "Failed to accept booking");
     } finally {
       setAccepting(false);
+    }
+  }
+
+  async function startOnTheWay() {
+    setStartingOnTheWay(true);
+    try {
+      await base44.entities.Booking.update(id, { status: "on_the_way" });
+      setBooking({ ...booking, status: "on_the_way" });
+      toast.success("Customer has been notified you're on the way!");
+      base44.functions.invoke('notifyCustomerOnTheWay', { booking_id: id }).catch(() => {});
+      // The reminder should disappear immediately once "On The Way" is
+      // pressed — dismiss it as part of the same action rather than waiting
+      // for the next scheduled reminder-engine pass.
+      reminders.forEach((r) => dismissReminder(r.id));
+    } catch (error) {
+      toast.error("Failed to update status");
+    } finally {
+      setStartingOnTheWay(false);
     }
   }
 
@@ -373,6 +398,26 @@ export default function BookingDetail() {
             <div>
               <p className="font-heading font-bold text-emerald-900">Contractor has arrived!</p>
               <p className="text-xs text-emerald-700">Your contractor is at the job site.</p>
+            </div>
+          </div>
+        )}
+
+        {/* On The Way reminder — only ever matches for the accepted provider viewing their own booking (scoped by recipient_email via RLS) */}
+        {reminders.length > 0 && (
+          <ReminderBanner reminders={reminders} onDismiss={dismissReminder} />
+        )}
+
+        {/* Accepted Banner — job is committed but the provider hasn't left yet */}
+        {booking.status === "accepted" && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+              <CheckCircle className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="font-heading font-bold text-blue-800">
+                {isCustomer ? `${booking.contractor_name || booking.accepted_by_name} accepted your job!` : "You've accepted this job"}
+              </p>
+              <p className="text-xs text-blue-600">Use chat to confirm final details and price before heading over.</p>
             </div>
           </div>
         )}
@@ -666,19 +711,30 @@ export default function BookingDetail() {
                     <div className="flex items-start gap-3">
                       <Car className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-sm font-semibold text-amber-800">It is highly recommended that you are already on your way before accepting.</p>
-                        <p className="text-xs text-amber-700 mt-1">Accepting a job immediately notifies the customer and sets your status to "On The Way". Make sure you're ready to head to the job site.</p>
+                        <p className="text-sm font-semibold text-amber-800">Accepting commits you to this job.</p>
+                        <p className="text-xs text-amber-700 mt-1">The customer will be notified you've accepted. Use chat to confirm final details and price before heading over — you'll mark yourself "on the way" separately once you actually leave.</p>
                       </div>
                     </div>
                   </div>
                   <div className="flex gap-3 pt-1">
                     <Button variant="outline" className="flex-1 min-h-[44px]" onClick={() => setAcceptDialogOpen(false)}>Not Yet</Button>
                       <Button className="flex-1 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white" onClick={acceptBooking} disabled={accepting}>
-                        {accepting ? "Accepting..." : "I'm On My Way"}
+                        {accepting ? "Accepting..." : "Accept Job"}
                       </Button>
                   </div>
                 </DialogContent>
               </Dialog>
+            )}
+
+            {booking.status === "accepted" && !isCustomer && user?.email === booking.accepted_by_email && (
+              <Button
+                onClick={startOnTheWay}
+                disabled={startingOnTheWay}
+                className="flex-1 rounded-2xl h-12 min-h-[44px] font-heading font-bold bg-violet-600 hover:bg-violet-700 text-white gap-2"
+              >
+                <Car className="w-4 h-4" />
+                {startingOnTheWay ? "Updating..." : "I'm On My Way"}
+              </Button>
             )}
 
             {(["pending", "accepted", "on_the_way", "in_progress"].includes(booking.status) || optimisticStatus === "cancelled") && (

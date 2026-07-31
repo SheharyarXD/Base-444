@@ -3,6 +3,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { booking_id } = await req.json();
 
     if (!booking_id) {
@@ -10,9 +15,13 @@ Deno.serve(async (req) => {
     }
 
     const booking = await base44.entities.Booking.get(booking_id);
-    
+
     if (!booking || booking.status !== 'on_the_way') {
       return Response.json({ error: 'Booking not found or not on the way' }, { status: 404 });
+    }
+
+    if (booking.accepted_by_email !== user.email) {
+      return Response.json({ error: 'Only the accepted provider can send this notification' }, { status: 403 });
     }
 
     // Send email to customer

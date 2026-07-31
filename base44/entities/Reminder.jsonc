@@ -1,0 +1,105 @@
+{
+  "name": "Reminder",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "title": "Reminder Type",
+      "description": "Identifies which reminder rule created this record (e.g. 'on_the_way_pending', 'job_upcoming_morning'). Deliberately a free string rather than an enum so new reminder types (payment reminders, license renewal, profile completion, subscription renewal, ...) never require a schema change — see src/lib/reminders.js REMINDER_TYPES for the canonical set in use."
+    },
+    "booking_id": {
+      "type": "string",
+      "title": "Related Booking ID",
+      "description": "Set for booking-scoped reminders (on-the-way, upcoming job). Left blank for reminder types that aren't tied to a specific booking (e.g. license renewal, subscription renewal)."
+    },
+    "recipient_email": {
+      "type": "string",
+      "title": "Recipient Email"
+    },
+    "title": {
+      "type": "string",
+      "title": "Title"
+    },
+    "message": {
+      "type": "string",
+      "title": "Message"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "pending",
+        "sent",
+        "dismissed",
+        "cancelled"
+      ],
+      "default": "pending"
+    },
+    "due_at": {
+      "type": "string",
+      "title": "Due At",
+      "format": "date-time"
+    },
+    "dedupe_key": {
+      "type": "string",
+      "title": "Dedupe Key",
+      "description": "Unique per logical reminder (e.g. 'on_the_way_pending:<bookingId>'). Checked before creating a new row so the same reminder is never duplicated."
+    },
+    "delivered_via": {
+      "type": "string",
+      "title": "Delivered Via",
+      "enum": [
+        "in_app",
+        "email"
+      ]
+    }
+  },
+  "required": [
+    "type",
+    "recipient_email",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.recipient_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.recipient_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.recipient_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

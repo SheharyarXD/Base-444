@@ -19,7 +19,7 @@ const planMessages = {
   priority_booking: {
     title: "Priority Booking Activated!",
     desc: "Your next booking will be prioritized. Contractors will see your request first.",
-    action: { label: "Book a Contractor", href: "/browse" },
+    action: { label: "Post a Job", href: "/post-job" },
   },
 };
 

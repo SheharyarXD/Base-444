@@ -5,14 +5,8 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/u
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { SERVICE_CATEGORIES } from "@/lib/serviceCategories";
-
-const states = [
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
-  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
-  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
-  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
-  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"
-];
+import { US_STATES as states } from "@/lib/usStates";
+import { validateVerificationSubmission } from "@/lib/verification";
 
 export default function ContractorSetup() {
   const navigate = useNavigate();
@@ -29,6 +23,15 @@ export default function ContractorSetup() {
     description: "",
     years_experience: "",
   });
+  // Verification fields are optional at onboarding time — a provider can
+  // start working with verification_status left at its default
+  // "not_submitted" and submit these later from Account instead.
+  const [verificationForm, setVerificationForm] = useState({
+    license_number: "",
+    business_name: "",
+    ein_number: "",
+  });
+  const [submittingVerification, setSubmittingVerification] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -45,6 +48,11 @@ export default function ContractorSetup() {
           description: c.description || "",
           years_experience: c.years_experience || "",
         });
+        setVerificationForm({
+          license_number: c.license_number || "",
+          business_name: c.business_name || "",
+          ein_number: c.ein_number || "",
+        });
       }
       setLoading(false);
     }
@@ -56,6 +64,24 @@ export default function ContractorSetup() {
       toast.error("Please fill in all required fields");
       return;
     }
+
+    // If the provider started filling in verification details, require the
+    // full set before saving rather than silently dropping a half-entered
+    // submission.
+    const touchedVerification = Object.values(verificationForm).some((v) => v.trim());
+    if (touchedVerification) {
+      const { valid, errors } = validateVerificationSubmission({
+        licenseNumber: verificationForm.license_number,
+        state: form.state,
+        businessName: verificationForm.business_name,
+        einNumber: verificationForm.ein_number,
+      });
+      if (!valid) {
+        toast.error(Object.values(errors)[0]);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const payload = {
@@ -72,6 +98,25 @@ export default function ContractorSetup() {
           name: user.full_name,
         });
       }
+
+      if (touchedVerification) {
+        setSubmittingVerification(true);
+        try {
+          await base44.functions.invoke('submitContractorVerification', {
+            licenseNumber: verificationForm.license_number,
+            state: form.state,
+            businessName: verificationForm.business_name,
+            einNumber: verificationForm.ein_number,
+          });
+        } catch (err) {
+          // Profile itself already saved — verification submission failing
+          // shouldn't block onboarding, just surface it.
+          toast.error("Profile saved, but verification submission failed. You can retry from Account.");
+        } finally {
+          setSubmittingVerification(false);
+        }
+      }
+
       toast.success("Profile complete!");
       navigate("/");
     } catch (err) {
@@ -220,6 +265,49 @@ export default function ContractorSetup() {
               placeholder="Tell customers about yourself..."
               rows={3}
               className="w-full px-4 py-2.5 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Verification (optional at this stage — can also be done later from Account) */}
+        <div className="bg-card rounded-2xl border border-border p-6 space-y-4 mt-4">
+          <div>
+            <h2 className="font-heading font-bold text-base text-foreground">Verification (Optional)</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Add these now or later from your Account page. Submitting puts your profile in review — it doesn't block you from accepting jobs.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-sm font-semibold text-foreground block mb-2">Contractor License Number</label>
+            <input
+              type="text"
+              value={verificationForm.license_number}
+              onChange={(e) => setVerificationForm({ ...verificationForm, license_number: e.target.value })}
+              placeholder="e.g., 2705123456"
+              className="w-full px-4 py-2.5 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-semibold text-foreground block mb-2">Business Name</label>
+            <input
+              type="text"
+              value={verificationForm.business_name}
+              onChange={(e) => setVerificationForm({ ...verificationForm, business_name: e.target.value })}
+              placeholder="e.g., Smith's Plumbing LLC"
+              className="w-full px-4 py-2.5 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-semibold text-foreground block mb-2">LLC / EIN Number</label>
+            <input
+              type="text"
+              value={verificationForm.ein_number}
+              onChange={(e) => setVerificationForm({ ...verificationForm, ein_number: e.target.value })}
+              placeholder="e.g., 12-3456789"
+              className="w-full px-4 py-2.5 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
         </div>

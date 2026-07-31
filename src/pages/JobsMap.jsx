@@ -8,6 +8,7 @@ import { base44 } from "@/api/base44Client";
 import { MapPin, Navigation, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import JobDetailsModal from "../components/JobDetailsModal";
+import ReminderBanner, { useActiveReminders } from "../components/ReminderBanner";
 import { haversineMiles, geocodeAddress } from "@/lib/geo";
 import { isProviderEligibleForJob, filterJobsForViewer } from "@/lib/matching";
 
@@ -87,6 +88,7 @@ export default function JobsMap() {
   const [modalOpen, setModalOpen] = useState(false);
   const [contractor, setContractor] = useState(null);
   const [profileIncompleteForJobs, setProfileIncompleteForJobs] = useState(false);
+  const { reminders, dismiss: dismissReminder } = useActiveReminders({ recipientEmail: user?.email });
 
   async function handleZipSearch(zipCode = zipInput.trim()) {
     if (!zipCode) return;
@@ -269,7 +271,7 @@ export default function JobsMap() {
       }
       setGeocoded((prev) => prev.filter((j) => j.id !== job.id));
       setModalOpen(false);
-      toast.success("Job accepted! Head to the customer now.");
+      toast.success("Job accepted! Message the customer to confirm details, then mark yourself on the way from My Jobs.");
       setAccepting(null);
       return true;
     } catch (error) {
@@ -315,6 +317,10 @@ export default function JobsMap() {
           <div className="mb-2 px-3 py-2 bg-secondary rounded-lg text-xs text-muted-foreground">
             Showing <strong>{contractor.category}</strong> jobs. Tap a job on the map to view and accept it.
           </div>
+        )}
+
+        {isContractor && reminders.length > 0 && (
+          <ReminderBanner reminders={reminders} onDismiss={dismissReminder} className="mb-2" />
         )}
 
         {isContractor && profileIncompleteForJobs && (

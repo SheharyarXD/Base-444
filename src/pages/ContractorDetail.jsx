@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Star, Clock, MapPin, CheckCircle, Briefcase, Calendar, Shield, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import moment from "moment";
 
 export default function ContractorDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [contractor, setContractor] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -85,12 +86,12 @@ export default function ContractorDetail() {
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-        <Link
-          to="/browse"
+        <button
+          onClick={() => navigate(-1)}
           className="absolute top-4 left-4 w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center hover:bg-white transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
-        </Link>
+        </button>
       </div>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 -mt-16 relative z-10">

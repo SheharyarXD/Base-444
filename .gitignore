@@ -29,3 +29,6 @@ dist-ssr
 
 .env
 .vite
+
+# Generated preview/deliverable documents — share these directly, don't commit them
+*.pdf

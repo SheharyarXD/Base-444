@@ -64,7 +64,7 @@ export default function JobDetailsModal({ job, open, onOpenChange, onAccept, acc
       await base44.integrations.Core.SendEmail({
         to: job.customer_email,
         subject: `Your job has been accepted by ${user?.full_name}`,
-        body: `Hi ${job.customer_name},\n\n${user?.full_name} has accepted your job request for "${job.job_title}" scheduled for ${job.preferred_date}.\n\nThey will be heading to your location shortly.\n\nBest regards,\nLinked`,
+        body: `Hi ${job.customer_name},\n\n${user?.full_name} has accepted your job request for "${job.job_title}" scheduled for ${job.preferred_date}.\n\nYou can message them in the app to confirm details and price. They'll notify you separately once they're actually on the way.\n\nBest regards,\nLinked`,
       });
     } catch (err) {
       console.error('Error accepting job:', err);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Mail, LogOut, Shield, CalendarCheck, Star, Bell, Moon, Lock, Camera, Share2, Copy, Check, FileText, ExternalLink, ChevronDown } from "lucide-react";
+import { Mail, LogOut, Shield, CalendarCheck, Star, Bell, Moon, Lock, Camera, Share2, Copy, Check, FileText, ExternalLink, ChevronDown, BadgeCheck } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -8,6 +8,8 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/u
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { motion } from "framer-motion";
+import { US_STATES } from "@/lib/usStates";
+import { validateVerificationSubmission, VERIFICATION_STATUS, VERIFICATION_STATUS_LABELS } from "@/lib/verification";
 
 export default function Account() {
   const navigate = useNavigate();
@@ -21,6 +23,9 @@ export default function Account() {
   const [savingContact, setSavingContact] = useState(false);
   const [contractor, setContractor] = useState(null);
   const [savingContractor, setSavingContractor] = useState(false);
+  const [verificationForm, setVerificationForm] = useState({ license_number: "", state: "", business_name: "", ein_number: "" });
+  const [submittingVerification, setSubmittingVerification] = useState(false);
+  const [verificationStateDrawerOpen, setVerificationStateDrawerOpen] = useState(false);
   const [businessOwner, setBusinessOwner] = useState(null);
   const [savingBusinessOwner, setSavingBusinessOwner] = useState(false);
   const [address, setAddress] = useState(null);
@@ -34,8 +39,6 @@ export default function Account() {
   const [copied, setCopied] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [cancellingSubscription, setCancellingSubscription] = useState(false);
-  const [selectedUserType, setSelectedUserType] = useState("");
-  const [userTypeDrawerOpen, setUserTypeDrawerOpen] = useState(false);
 
   const [ein, setEin] = useState("");
   const [savingEin, setSavingEin] = useState(false);
@@ -48,9 +51,6 @@ export default function Account() {
       try {
         const me = await base44.auth.me();
         setUser(me);
-        if (me?.user_type) {
-          setSelectedUserType(me.user_type);
-        }
 
         try {
           const [bookings, reviews] = await Promise.all([
@@ -68,6 +68,12 @@ export default function Account() {
           const contractors = await base44.entities.Contractor.filter({ created_by: me.email });
           if (contractors.length > 0) {
             setContractor(contractors[0]);
+            setVerificationForm({
+              license_number: contractors[0].license_number || "",
+              state: contractors[0].state || "",
+              business_name: contractors[0].business_name || "",
+              ein_number: contractors[0].ein_number || "",
+            });
           }
           setEin(me.ein || "");
           setContactInfo({
@@ -163,6 +169,38 @@ export default function Account() {
       toast.error("Failed to save EIN. Please try again.");
     } finally {
       setSavingEin(false);
+    }
+  }
+
+  async function submitVerification() {
+    const { valid, errors } = validateVerificationSubmission({
+      licenseNumber: verificationForm.license_number,
+      state: verificationForm.state,
+      businessName: verificationForm.business_name,
+      einNumber: verificationForm.ein_number,
+    });
+    if (!valid) {
+      toast.error(Object.values(errors)[0]);
+      return;
+    }
+    setSubmittingVerification(true);
+    try {
+      const res = await base44.functions.invoke('submitContractorVerification', {
+        licenseNumber: verificationForm.license_number,
+        state: verificationForm.state,
+        businessName: verificationForm.business_name,
+        einNumber: verificationForm.ein_number,
+      });
+      if (res.data?.error) {
+        toast.error(res.data.error);
+        return;
+      }
+      setContractor(res.data.contractor);
+      toast.success("Verification submitted — you'll see a status update here once it's reviewed.");
+    } catch (err) {
+      toast.error(err?.response?.data?.error || "Failed to submit verification");
+    } finally {
+      setSubmittingVerification(false);
     }
   }
 
@@ -302,54 +340,13 @@ export default function Account() {
                </div>
              </div>
 
-            {/* User Type Display */}
+            {/* User Type Display — fixed at signup, not user-editable */}
             <div className="bg-card rounded-2xl border border-border p-6">
               <h2 className="font-heading font-bold text-sm text-foreground mb-2">User Type</h2>
-              <p className="text-xs text-muted-foreground mb-3">Select your account type</p>
-              <button
-                onClick={() => setUserTypeDrawerOpen(true)}
-                className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <span className={selectedUserType ? "text-foreground" : "text-muted-foreground"}>
-                  {selectedUserType || "Select type"}
-                </span>
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              </button>
-              <Drawer open={userTypeDrawerOpen} onOpenChange={setUserTypeDrawerOpen}>
-                <DrawerContent>
-                  <DrawerHeader>
-                    <DrawerTitle className="font-heading">Select User Type</DrawerTitle>
-                  </DrawerHeader>
-                  <div className="px-4 pb-8 space-y-2">
-                    {["Homeowner", "Realtor", "Business Owner", "Contractor", "Handyman"].map((type) => (
-                      <button
-                        key={type}
-                        onClick={async () => {
-                          setUserTypeDrawerOpen(false);
-                          setSelectedUserType(type);
-                          try {
-                            await base44.functions.invoke('updateUserType', { user_type: type });
-                            toast.success("User type updated to " + type + "!");
-                            setTimeout(() => window.location.reload(), 1000);
-                          } catch (err) {
-                            console.error('Failed to update user type:', err);
-                            toast.error("Failed to update user type: " + (err.message || "Please try again"));
-                            setSelectedUserType(user?.user_type || "");
-                          }
-                        }}
-                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-semibold transition-colors ${
-                          selectedUserType === type
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-secondary text-foreground hover:bg-secondary/80"
-                        }`}
-                      >
-                        {type}
-                        {selectedUserType === type && <Check className="w-4 h-4" />}
-                      </button>
-                    ))}
-                  </div>
-                </DrawerContent>
-              </Drawer>
+              <p className="text-xs text-muted-foreground mb-3">Set when you signed up and cannot be changed here</p>
+              <div className="w-full flex items-center px-3 py-2.5 rounded-lg border border-border bg-secondary/50 text-sm text-foreground">
+                {user?.user_type || "—"}
+              </div>
             </div>
 
              {/* Contractor & Handyman Preferences */}
@@ -465,6 +462,111 @@ export default function Account() {
                         💡 <strong>Tip:</strong> Verification helps build trust with customers and increases your booking rate.
                       </p>
                     </div>
+                  </div>
+                </div>
+
+                {/* Contractor Verification — license/LLC/EIN, reviewed manually for now (see src/lib/verification) */}
+                <div className="bg-card rounded-2xl border border-border p-6 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="font-heading font-bold text-sm text-foreground">Contractor Verification</h2>
+                    {contractor?.verification_status && (
+                      <span
+                        className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                          contractor.verification_status === VERIFICATION_STATUS.VERIFIED
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                            : contractor.verification_status === VERIFICATION_STATUS.PENDING
+                            ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                            : contractor.verification_status === VERIFICATION_STATUS.REJECTED
+                            ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+                            : "bg-secondary text-muted-foreground"
+                        }`}
+                      >
+                        <BadgeCheck className="w-3 h-3" />
+                        {VERIFICATION_STATUS_LABELS[contractor.verification_status] || contractor.verification_status}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Submit your license, business name, and EIN/LLC number for verification. Automated verification isn't available for every state yet — submissions are reviewed manually in the meantime.
+                  </p>
+                  {contractor?.verification_status === VERIFICATION_STATUS.REJECTED && contractor?.verification_notes && (
+                    <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-xl p-3">
+                      <p className="text-xs text-red-800 dark:text-red-200">{contractor.verification_notes}</p>
+                    </div>
+                  )}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground mb-1 block">Contractor License Number</label>
+                      <input
+                        type="text"
+                        value={verificationForm.license_number}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, license_number: e.target.value })}
+                        placeholder="e.g. 2705123456"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground mb-1 block">License State</label>
+                      <Drawer open={verificationStateDrawerOpen} onOpenChange={setVerificationStateDrawerOpen}>
+                        <button
+                          onClick={() => setVerificationStateDrawerOpen(true)}
+                          type="button"
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-background text-sm text-left focus:outline-none focus:ring-2 focus:ring-primary"
+                        >
+                          <span className={verificationForm.state ? "" : "text-muted-foreground"}>{verificationForm.state || "Select a state"}</span>
+                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                        <DrawerContent className="max-h-[80vh] flex flex-col">
+                          <DrawerHeader className="sticky top-0 bg-card border-b border-border z-10">
+                            <DrawerTitle>Select License State</DrawerTitle>
+                          </DrawerHeader>
+                          <div className="px-4 space-y-2 overflow-y-auto flex-1 pb-6">
+                            {US_STATES.map((st) => (
+                              <button
+                                key={st}
+                                type="button"
+                                onClick={() => {
+                                  setVerificationForm({ ...verificationForm, state: st });
+                                  setVerificationStateDrawerOpen(false);
+                                }}
+                                className={`w-full px-4 py-3 rounded-lg text-left text-sm transition-colors font-medium ${
+                                  verificationForm.state === st ? "bg-primary text-primary-foreground" : "bg-secondary hover:bg-secondary/80"
+                                }`}
+                              >
+                                {st}
+                              </button>
+                            ))}
+                          </div>
+                        </DrawerContent>
+                      </Drawer>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground mb-1 block">Business Name</label>
+                      <input
+                        type="text"
+                        value={verificationForm.business_name}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, business_name: e.target.value })}
+                        placeholder="e.g. Smith's Plumbing LLC"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground mb-1 block">LLC / EIN Number</label>
+                      <input
+                        type="text"
+                        value={verificationForm.ein_number}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, ein_number: e.target.value })}
+                        placeholder="e.g. 12-3456789"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <Button onClick={submitVerification} disabled={submittingVerification} className="w-full rounded-xl">
+                      {submittingVerification
+                        ? "Submitting..."
+                        : contractor?.verification_status && contractor.verification_status !== VERIFICATION_STATUS.NOT_SUBMITTED
+                        ? "Resubmit for Verification"
+                        : "Submit for Verification"}
+                    </Button>
                   </div>
                 </div>
               </>

@@ -1,13 +1,15 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import { Home, Search, CalendarCheck, User, Menu, X, Building2, Map, MessageCircle } from "lucide-react";
+import { Home, CalendarCheck, User, Menu, X, Building2, Map, MessageCircle } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { motion, AnimatePresence } from "framer-motion";
 
+// Contractor browsing is intentionally not in primary nav — the app runs off
+// the map/job-request flow instead. The route and page still exist; they're
+// just not linked to from anywhere right now.
 const allNavItems = [
   { path: "/", label: "Home", icon: Home },
-  { path: "/browse", label: "Browse", icon: Search },
   { path: "/bookings", label: "Bookings", icon: CalendarCheck },
   { path: "/inbox", label: "Inbox", icon: MessageCircle },
   { path: "/account", label: "Account", icon: User },

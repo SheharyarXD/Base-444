@@ -121,16 +121,8 @@ export default function Home() {
 
             <div className="max-w-md mx-auto">
               <div className="flex gap-3">
-                {!['Realtor', 'Homeowner', 'Business Owner'].includes(user?.user_type) && (
-                  <button
-                    onClick={() => navigate("/browse")}
-                    className="flex-1 w-full py-3.5 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white font-heading font-bold text-sm hover:shadow-lg hover:shadow-orange-500/30 transition-all"
-                  >
-                    Browse All
-                  </button>
-                )}
                 {user?.user_type !== "Handyman" && (
-                  <Link to="/post-job" className={user?.user_type === "Realtor" ? "w-full" : "flex-1"}>
+                  <Link to="/post-job" className="w-full">
                     <button className="w-full py-3.5 rounded-xl bg-white/15 backdrop-blur-sm text-white font-heading font-bold text-sm border border-white/30 hover:bg-white/25 transition-colors">
                       Post Job
                     </button>

@@ -69,11 +69,37 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Accepting commits the provider to the job — it does not mean they've
+    // left yet. Status moves to 'accepted' so pricing/details can still be
+    // confirmed over chat; the provider triggers 'on_the_way' separately
+    // (see BookingDetail.jsx's startOnTheWay) once they actually head out.
     const updated = await base44.asServiceRole.entities.Booking.update(bookingId, {
-      status: 'on_the_way',
+      status: 'accepted',
       accepted_by_email: user.email,
       accepted_by_name: user.full_name,
     });
+
+    // Create the "mark yourself on the way" reminder now, since this is the
+    // one moment we know it'll eventually be needed. Mirrors
+    // buildOnTheWayReminder()/makeDedupeKey() in src/lib/reminders.js (not
+    // imported — see that file's header comment on the src/↔Deno boundary).
+    // The dedupe_key check makes this safe to run even if acceptJob were
+    // ever retried for the same booking.
+    const dedupeKey = `on_the_way_pending:${bookingId}`;
+    const existing = await base44.asServiceRole.entities.Reminder.filter({ dedupe_key: dedupeKey });
+    if (existing.length === 0) {
+      await base44.asServiceRole.entities.Reminder.create({
+        type: 'on_the_way_pending',
+        booking_id: bookingId,
+        recipient_email: user.email,
+        title: 'Mark yourself on the way',
+        message: `You accepted "${booking.job_title}" — don't forget to press "I'm On My Way" once you head out so the customer is notified.`,
+        status: 'pending',
+        due_at: new Date().toISOString(),
+        dedupe_key: dedupeKey,
+        delivered_via: 'in_app',
+      });
+    }
 
     return Response.json({ success: true, booking: updated });
   } catch (error) {
