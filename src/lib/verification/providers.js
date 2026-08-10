@@ -12,20 +12,22 @@
 //   - https://www.llcuniversity.com/50-secretary-of-state-sos-business-entity-search/
 //   - https://u-bidit.com/verify-contractors-licenses-in-all-50-states
 //
-// @typedef {Object} VerificationProvider
-// @property {string} id
-// @property {(state: string) => boolean} supports - whether this provider handles the given state
-// @property {(input: VerificationInput) => Promise<VerificationResult>} verify
-//
-// @typedef {Object} VerificationInput
-// @property {string} licenseNumber
-// @property {string} state
-// @property {string} businessName
-// @property {string} [einNumber]
-//
-// @typedef {Object} VerificationResult
-// @property {'pending'|'verified'|'rejected'} status
-// @property {string} [notes]
+/**
+ * @typedef {Object} VerificationProvider
+ * @property {string} id
+ * @property {(state: string) => boolean} supports - whether this provider handles the given state
+ * @property {(input: VerificationInput) => Promise<VerificationResult>} verify
+ *
+ * @typedef {Object} VerificationInput
+ * @property {string} licenseNumber
+ * @property {string} state
+ * @property {string} businessName
+ * @property {string} [einNumber]
+ *
+ * @typedef {Object} VerificationResult
+ * @property {'pending'|'verified'|'rejected'} status
+ * @property {string} [notes]
+ */
 
 /** @type {VerificationProvider} */
 export const ManualReviewProvider = {

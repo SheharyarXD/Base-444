@@ -2,24 +2,7 @@ import { Link } from "react-router-dom";
 import { Calendar, MapPin, Clock, ChevronRight, Navigation, MessageCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import moment from "moment";
-
-const statusStyles = {
-  pending: "bg-amber-50 text-amber-700 border-amber-200",
-  accepted: "bg-blue-50 text-blue-700 border-blue-200",
-  on_the_way: "bg-violet-50 text-violet-700 border-violet-200",
-  in_progress: "bg-primary/10 text-primary border-primary/20",
-  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  cancelled: "bg-red-50 text-red-600 border-red-200",
-};
-
-const statusLabels = {
-  pending: "Pending",
-  accepted: "Accepted",
-  on_the_way: "On The Way",
-  in_progress: "In Progress",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
+import { BOOKING_STATUS_STYLES as statusStyles, BOOKING_STATUS_LABELS as statusLabels } from "@/lib/bookingStatus";
 
 export default function BookingCard({ booking, showAddressLink = false, latestMessage = null }) {
   return (

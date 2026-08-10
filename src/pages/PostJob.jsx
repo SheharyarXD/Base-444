@@ -96,6 +96,14 @@ export default function PostJob() {
       // have to re-geocode this job's address on every future page view.
       const fullAddress = `${form.address}, ${form.city}, ${form.state} ${form.zip}`;
       const coords = await geocodeAddress(fullAddress);
+      if (!coords) {
+        toast.error("We couldn't locate that address on the map. Double-check it, or the job may not be visible to nearby providers.");
+      }
+
+      // Consumes a Priority Booking add-on purchase (confirmPurchase sets
+      // this after payment — see that function's header comment). One-shot:
+      // cleared immediately so it only ever applies to the next job posted.
+      const usePriorityBoost = !!user?.pending_priority_boost;
 
       await base44.entities.Booking.create({
         ...form,
@@ -106,7 +114,12 @@ export default function PostJob() {
         customer_email: user?.email || "",
         customer_type: user?.user_type || "Homeowner",
         ...(coords ? { job_lat: coords.lat, job_lng: coords.lng } : {}),
+        ...(usePriorityBoost ? { is_priority: true } : {}),
       });
+
+      if (usePriorityBoost) {
+        await base44.auth.updateMe({ pending_priority_boost: false }).catch(() => {});
+      }
     } catch (err) {
       console.error('Error creating booking:', err);
       toast.error("Failed to post job. Please try again.");

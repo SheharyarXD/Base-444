@@ -5,9 +5,6 @@ import { useEffect, useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { motion, AnimatePresence } from "framer-motion";
 
-// Contractor browsing is intentionally not in primary nav — the app runs off
-// the map/job-request flow instead. The route and page still exist; they're
-// just not linked to from anywhere right now.
 const allNavItems = [
   { path: "/", label: "Home", icon: Home },
   { path: "/bookings", label: "Bookings", icon: CalendarCheck },
@@ -23,7 +20,7 @@ const contractorNavItems = [
 ];
 
 
-const rootPaths = ["/", "/browse", "/jobs-map", "/bookings", "/inbox", "/account", "/realtor-dashboard", "/plans"];
+const rootPaths = ["/", "/jobs-map", "/bookings", "/inbox", "/account", "/realtor-dashboard", "/plans"];
 
 export default function Layout() {
   const location = useLocation();

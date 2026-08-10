@@ -5,7 +5,10 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { geocodeAddress } from "@/lib/geo";
 
-// Fix default marker icon for leaflet
+// Fix default marker icon for leaflet — _getIconUrl is a real internal
+// property Leaflet's bundler-icon-path workaround needs, just not part of
+// its public (and thus typed) API surface.
+// @ts-ignore
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",

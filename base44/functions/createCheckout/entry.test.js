@@ -6,6 +6,11 @@ vi.mock("npm:@base44/sdk@0.8.25", () => ({
 
 const mockClient = {
   auth: { me: vi.fn() },
+  asServiceRole: {
+    entities: {
+      PurchaseIntent: { create: vi.fn() },
+    },
+  },
 };
 
 function makeReq(body, headers = {}) {
@@ -35,6 +40,7 @@ describe("createCheckout", () => {
       json: async () => ({ checkoutSession: { redirectUrl: "https://pay.example/session" } }),
     });
     vi.stubGlobal("fetch", fetchMock);
+    mockClient.asServiceRole.entities.PurchaseIntent.create.mockResolvedValue({ id: "pi1" });
     handler = await loadHandler();
   });
 
@@ -89,5 +95,28 @@ describe("createCheckout", () => {
     fetchMock.mockResolvedValue({ ok: false, json: async () => ({ message: "card declined" }) });
     const res = await handler(makeReq({ planId: "verified_pro" }));
     expect(res.status).toBe(400);
+  });
+
+  // Regression coverage for the free-upgrade exploit found in the Phase 0
+  // re-audit: ThankYou.jsx used to grant a plan purely from a client-visible
+  // ?plan= query param, so anyone could type the URL and get it for free.
+  // The fix is that this function now mints a single-use token, records it
+  // server-side bound to this user + plan *before* redirecting to Wix, and
+  // only confirmPurchase (given that exact token) can ever grant anything.
+  it("creates a pending PurchaseIntent bound to the caller and plan before redirecting to Wix", async () => {
+    await handler(makeReq({ planId: "priority_booking" }));
+
+    expect(mockClient.asServiceRole.entities.PurchaseIntent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ user_email: "u@x.com", plan_id: "priority_booking", status: "pending" })
+    );
+  });
+
+  it("embeds the minted token in the Wix thankYouPageUrl redirect", async () => {
+    await handler(makeReq({ planId: "priority_booking" }));
+
+    const [createdIntent] = mockClient.asServiceRole.entities.PurchaseIntent.create.mock.calls[0];
+    const [, options] = fetchMock.mock.calls[0];
+    const sentBody = JSON.parse(options.body);
+    expect(sentBody.callbackUrls.thankYouPageUrl).toContain(`token=${createdIntent.token}`);
   });
 });

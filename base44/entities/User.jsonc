@@ -25,10 +25,18 @@
       "type": "string",
       "enum": [
         "free",
-        "realtor_pro"
+        "realtor_pro",
+        "handyman_pro",
+        "business_pro"
       ],
       "title": "Plan",
       "default": "free"
+    },
+    "pending_priority_boost": {
+      "type": "boolean",
+      "title": "Pending Priority Booking Boost",
+      "description": "Set by confirmPurchase after a Priority Booking add-on purchase. Consumed (and cleared) the next time this user creates a Booking, which is stamped is_priority: true.",
+      "default": false
     },
     "venmo_username": {
       "type": "string",

@@ -2,7 +2,6 @@ import { lazy, Suspense } from 'react';
 
 // Lazy load all pages for code splitting
 const Home = lazy(() => import('./pages/Home'));
-const Browse = lazy(() => import('./pages/Browse'));
 const ContractorDetail = lazy(() => import('./pages/ContractorDetail'));
 const BookContractor = lazy(() => import('./pages/BookContractor'));
 const Bookings = lazy(() => import('./pages/Bookings'));
@@ -39,7 +38,6 @@ export function withSuspense(Component) {
 
 export {
   Home,
-  Browse,
   ContractorDetail,
   BookContractor,
   Bookings,

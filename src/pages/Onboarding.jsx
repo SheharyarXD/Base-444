@@ -69,8 +69,22 @@ export default function Onboarding() {
       return;
     }
     setSaving(true);
-    await base44.auth.updateMe({ user_type: selectedType });
-    navigate("/");
+    try {
+      // Routed through the server function (not auth.updateMe directly) so
+      // the "account type is fixed at signup" rule is actually enforced —
+      // see updateUserType/entry.ts's header comment for the full picture,
+      // including its documented residual limitation.
+      const res = await base44.functions.invoke("updateUserType", { user_type: selectedType });
+      if (res?.data?.error) {
+        toast.error(res.data.error);
+        setSaving(false);
+        return;
+      }
+      navigate("/");
+    } catch (err) {
+      toast.error(err?.response?.data?.error || "Failed to save your account type. Please try again.");
+      setSaving(false);
+    }
   }
 
   return (

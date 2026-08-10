@@ -5,34 +5,38 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 
-export default function ReviewForm({ booking, open, onOpenChange, onSuccess, onReviewSubmit, contractorId }) {
+export default function ReviewForm({ booking = null, open, onOpenChange, onSuccess = undefined, onReviewSubmit = undefined, contractorId = undefined }) {
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [optimisticReview, setOptimisticReview] = useState(null);
 
   async function handleSubmit() {
     if (rating === 0) {
       toast.error("Please select a rating");
       return;
     }
-    
+    if (!booking?.id) {
+      toast.error("A completed booking is required to leave a review.");
+      return;
+    }
+
     setSubmitting(true);
-    const user = await base44.auth.me();
-    const optimistic = {
-      id: `temp-${Date.now()}`,
-      contractor_id: contractorId || booking?.contractor_id,
-      booking_id: booking?.id || null,
-      reviewer_name: user.full_name,
-      rating,
-      comment: comment.trim(),
-      created_date: new Date().toISOString(),
-    };
-    setOptimisticReview(optimistic);
-    
     try {
-      await base44.entities.Review.create(optimistic);
+      // Routed through submitReview (not a raw Review.create) — that
+      // function is what actually enforces one-review-per-booking,
+      // completed-booking eligibility, and recomputes the contractor's
+      // rating/review_count from the live set of reviews. None of that was
+      // enforced anywhere before, client or server.
+      const res = await base44.functions.invoke('submitReview', {
+        bookingId: booking.id,
+        rating,
+        comment: comment.trim(),
+      });
+      if (res.data?.error) {
+        toast.error(res.data.error);
+        return;
+      }
       toast.success("Thank you for your review!");
       setRating(0);
       setComment("");
@@ -40,8 +44,7 @@ export default function ReviewForm({ booking, open, onOpenChange, onSuccess, onR
       onSuccess?.();
       setTimeout(() => onReviewSubmit?.(contractorId || booking?.contractor_id), 500);
     } catch (error) {
-      setOptimisticReview(null);
-      toast.error("Failed to submit review");
+      toast.error(error?.response?.data?.error || "Failed to submit review");
     } finally {
       setSubmitting(false);
     }

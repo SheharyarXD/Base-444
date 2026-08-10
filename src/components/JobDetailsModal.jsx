@@ -1,56 +1,39 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { MapPin, Calendar, Clock, DollarSign, Phone, Mail, FileText, Loader2, CheckCircle, Send } from "lucide-react";
+import { MapPin, Calendar, Clock, DollarSign, Phone, Mail, FileText, Loader2, CheckCircle } from "lucide-react";
 import moment from "moment";
 import { base44 } from "@/api/base44Client";
 import AddressMap from "./AddressMap";
+import BookingChat from "./BookingChat";
 import { canViewFullJobDetails, maskedCityStateZip } from "@/lib/jobPrivacy";
 
 export default function JobDetailsModal({ job, open, onOpenChange, onAccept, accepting }) {
-  const [messages, setMessages] = useState([]);
-  const [messageInput, setMessageInput] = useState("");
-  const [sendingMessage, setSendingMessage] = useState(false);
   const [user, setUser] = useState(null);
-  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [viewerContractor, setViewerContractor] = useState(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!open || !job) return;
-    base44.auth.me().then(setUser).catch(() => {});
-    loadMessages();
+    base44.auth.me().then((me) => {
+      setUser(me);
+      if (["Contractor", "Handyman"].includes(me?.user_type)) {
+        base44.entities.Contractor.filter({ created_by: me.email }).then((contractors) => {
+          setViewerContractor(contractors[0] || null);
+        }).catch(() => {});
+      }
+    }).catch(() => {});
   }, [open, job?.id]);
 
   const isContractorOrHandyman = ["Contractor", "Handyman"].includes(user?.user_type);
-  const profileIncomplete = isContractorOrHandyman && (!user?.ein || !user?.ein?.trim());
+  // Matches BookingDetail.jsx's definition — previously keyed off a legacy
+  // `user.ein` field unrelated to actually having a Contractor profile.
+  const profileIncomplete = isContractorOrHandyman && !viewerContractor;
   // Job posts are visible to every eligible provider before acceptance (see
   // JobsMap.jsx), but the customer's contact info and exact address should
   // only be shown to the customer themself or the provider who accepted —
   // not to every provider still deciding whether to accept.
   const canViewFull = canViewFullJobDetails(job, user?.email);
-
-  async function loadMessages() {
-    if (!job?.id) return;
-    setLoadingMessages(true);
-    const msgs = await base44.entities.Message.filter({ booking_id: job.id }, "created_date", 50);
-    setMessages(msgs);
-    setLoadingMessages(false);
-  }
-
-  async function sendMessage() {
-    if (!messageInput.trim() || !user || !job) return;
-    setSendingMessage(true);
-    await base44.entities.Message.create({
-      booking_id: job.id,
-      sender_email: user.email,
-      sender_name: user.full_name,
-      recipient_email: job.customer_email,
-      content: messageInput,
-    });
-    setMessageInput("");
-    await loadMessages();
-    setSendingMessage(false);
-  }
 
   async function handleAcceptWithEmail() {
     setLoading(true);
@@ -208,8 +191,8 @@ export default function JobDetailsModal({ job, open, onOpenChange, onAccept, acc
           {profileIncomplete && (
             <div className="bg-amber-50 dark:bg-amber-950 border border-amber-300 dark:border-amber-700 rounded-xl p-4">
               <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-1">⚠️ Profile Incomplete</p>
-              <p className="text-xs text-amber-700 dark:text-amber-300">Please add your <strong>EIN</strong> or <strong>Contractor License Number</strong> in Account settings to accept jobs and message customers.</p>
-              <a href="/account" className="inline-block mt-2 text-xs font-bold text-amber-800 dark:text-amber-200 underline">Go to Account Settings →</a>
+              <p className="text-xs text-amber-700 dark:text-amber-300">Complete your provider profile to accept jobs and message customers.</p>
+              <a href="/contractor-setup" className="inline-block mt-2 text-xs font-bold text-amber-800 dark:text-amber-200 underline">Complete Your Profile →</a>
             </div>
           )}
 
@@ -239,59 +222,19 @@ export default function JobDetailsModal({ job, open, onOpenChange, onAccept, acc
             </div>
           )}
 
-          {/* Messaging — only show if there are messages or user is contractor/handyman */}
-          {!profileIncomplete && (messages.length > 0 || isContractorOrHandyman) && (
-            <div className="bg-secondary/30 rounded-xl p-4 space-y-3">
-              <p className="font-semibold text-sm">Messages</p>
-              {messages.length > 0 && (
-                <div className="bg-background rounded-lg p-3 max-h-48 overflow-y-auto space-y-3">
-                  {loadingMessages ? (
-                    <p className="text-xs text-muted-foreground text-center py-8">Loading messages...</p>
-                  ) : (
-                    messages.map((msg) => {
-                      const isOwn = msg.sender_email === user?.email;
-                      const initials = msg.sender_name?.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() || "?";
-                      return (
-                        <div key={msg.id} className={`flex items-end gap-2 ${isOwn ? "justify-end" : "justify-start"}`}>
-                          {!isOwn && (
-                            <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mb-0.5">
-                              <span className="text-xs font-bold text-primary">{initials}</span>
-                            </div>
-                          )}
-                          <div className={`max-w-[70%] rounded-2xl px-3 py-2 text-xs ${isOwn ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-secondary text-foreground rounded-bl-sm"}`}>
-                            {!isOwn && <p className="font-semibold text-xs mb-0.5 opacity-70">{msg.sender_name}</p>}
-                            <p>{msg.content}</p>
-                          </div>
-                          {isOwn && (
-                            <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mb-0.5">
-                              <span className="text-xs font-bold text-primary">{user?.full_name?.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() || "?"}</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Type a message..."
-                  value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                  className="flex-1 px-3 py-2 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-                <Button
-                  size="icon"
-                  onClick={sendMessage}
-                  disabled={sendingMessage || !messageInput.trim()}
-                  className="h-9 w-9"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
+          {/* Messaging — reuses BookingChat (the same component
+              BookingDetail.jsx uses) instead of a second, hand-rolled,
+              non-realtime chat implementation that used to live here and
+              could drift from it. The provider's counterpart is always
+              unambiguous (job.customer_email) since only this one provider
+              is composing from this modal. */}
+          {!profileIncomplete && user && (
+            <BookingChat
+              bookingId={job.id}
+              currentUser={user}
+              booking={job}
+              isCustomer={false}
+            />
           )}
           </div>
       </DialogContent>

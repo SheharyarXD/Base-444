@@ -34,20 +34,20 @@ const plans = [
   {
     id: "verified_pro",
     icon: Shield,
-    title: "Verified Pro Badge",
-    subtitle: "Stand out as a trusted contractor",
+    title: "Pro Badge",
+    subtitle: "Stand out with a Pro badge on your profile",
     price: 9.99,
     priceLabel: "one-time",
     color: "blue",
     badge: "For Contractors",
     isSubscription: false,
     features: [
-      "Verified badge on your profile",
-      "EIN check certification",
+      "Pro badge shown on your profile",
       "Higher placement in search results",
       "Increased customer trust",
+      "Separate from license verification — submit that free from Account",
     ],
-    cta: "Get Verified",
+    cta: "Get Pro Badge",
   },
 
   {
@@ -175,12 +175,10 @@ export default function Plans() {
   async function handlePurchase(plan) {
     setPurchasing(plan.id);
     try {
-      const res = await base44.functions.invoke("createCheckout", {
-        planId: plan.id,
-        planName: plan.title,
-        price: plan.price,
-        isSubscription: plan.isSubscription,
-      });
+      // Only planId is sent — price/name/subscription-ness are looked up
+      // server-side from createCheckout's own PLANS table, which is the
+      // actual source of truth for what gets charged.
+      const res = await base44.functions.invoke("createCheckout", { planId: plan.id });
       window.location.href = res.data.redirectUrl;
     } catch (e) {
       toast.error("Payment setup failed. Please try again.");

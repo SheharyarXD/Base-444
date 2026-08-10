@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Mail, LogOut, Shield, CalendarCheck, Star, Bell, Moon, Lock, Camera, Share2, Copy, Check, FileText, ExternalLink, ChevronDown, BadgeCheck } from "lucide-react";
+import { Mail, LogOut, Shield, CalendarCheck, Star, Bell, Moon, Lock, Camera, Share2, Copy, Check, FileText, ChevronDown, BadgeCheck } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -10,6 +10,7 @@ import { base44 } from "@/api/base44Client";
 import { motion } from "framer-motion";
 import { US_STATES } from "@/lib/usStates";
 import { validateVerificationSubmission, VERIFICATION_STATUS, VERIFICATION_STATUS_LABELS } from "@/lib/verification";
+import VerificationLinksPanel from "@/components/VerificationLinksPanel";
 
 export default function Account() {
   const navigate = useNavigate();
@@ -39,9 +40,6 @@ export default function Account() {
   const [copied, setCopied] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [cancellingSubscription, setCancellingSubscription] = useState(false);
-
-  const [ein, setEin] = useState("");
-  const [savingEin, setSavingEin] = useState(false);
 
   const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
   const shareableLink = `${appUrl}?ref=${user?.id}`;
@@ -75,7 +73,6 @@ export default function Account() {
               ein_number: contractors[0].ein_number || "",
             });
           }
-          setEin(me.ein || "");
           setContactInfo({
             business_name: me.business_name || "",
             contact_phone: me.contact_phone || "",
@@ -154,24 +151,6 @@ export default function Account() {
     setSavingContact(false);
   }
 
-  async function saveEin() {
-    if (!ein.trim()) {
-      toast.error("Please enter an EIN");
-      return;
-    }
-    setSavingEin(true);
-    try {
-      await base44.auth.updateMe({ ein: ein.trim() });
-      setUser(prev => ({ ...prev, ein: ein.trim() }));
-      toast.success("EIN saved! You can now verify with DPOR.");
-    } catch (err) {
-      console.error('Failed to save EIN:', err);
-      toast.error("Failed to save EIN. Please try again.");
-    } finally {
-      setSavingEin(false);
-    }
-  }
-
   async function submitVerification() {
     const { valid, errors } = validateVerificationSubmission({
       licenseNumber: verificationForm.license_number,
@@ -202,15 +181,6 @@ export default function Account() {
     } finally {
       setSubmittingVerification(false);
     }
-  }
-
-  function openDporVerification() {
-    if (!ein.trim()) {
-      toast.error("Please save your EIN first");
-      return;
-    }
-    // Open DPOR verification link (placeholder - update with actual DPOR URL)
-    window.open(`https://dpor.maryland.gov`, "_blank");
   }
 
   async function saveBusinessOwnerZip() {
@@ -397,75 +367,9 @@ export default function Account() {
                   </div>
                 </div>
 
-                {/* EIN & DPOR Verification */}
-                <div className="bg-card rounded-2xl border border-border p-6 space-y-4">
-                  <h2 className="font-heading font-bold text-sm text-foreground">Professional Verification</h2>
-                  <p className="text-xs text-muted-foreground">Link your license number for DPOR verification</p>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs font-semibold text-muted-foreground mb-1 block">{user?.user_type === "Handyman" ? "Entity ID" : "License Number"}</label>
-                      <input
-                        type="text"
-                        value={ein}
-                        onChange={(e) => setEin(e.target.value.slice(0, 30))}
-                        placeholder={user?.user_type === "Handyman" ? "e.g. EIN123456" : "e.g. 2705123456"}
-                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                      {user?.user_type === "Handyman" && user?.ein ? (
-                        <p className="text-xs mt-1">
-                          Saved:{" "}
-                          <a
-                            href="https://cis.scc.virginia.gov/EntitySearch/Index"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary font-semibold underline hover:opacity-80"
-                          >
-                            {user.ein}
-                          </a>
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground mt-1">{user?.user_type === "Handyman" ? "Your entity ID is used for verification" : "Your license number is used for contractor verification only"}</p>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={saveEin}
-                        disabled={savingEin}
-                        className="flex-1 rounded-xl"
-                      >
-                        {savingEin ? "Saving..." : "Save License"}
-                      </Button>
-                      <Button
-                       onClick={() => {
-                         if (user?.user_type === "Handyman") {
-                           if (!ein.trim() && !user?.ein) {
-                             toast.error("Please enter and save your Entity ID first");
-                             return;
-                           }
-                           const entityId = user?.ein || ein.trim();
-                           navigator.clipboard.writeText(entityId).catch(() => {});
-                           toast.success(`Entity ID "${entityId}" copied — paste it in the search box`, { duration: 6000 });
-                           window.open("https://cis.scc.virginia.gov/EntitySearch/Index", "_blank", "noopener,noreferrer");
-                         } else {
-                           openDporVerification();
-                         }
-                       }}
-                       variant="outline"
-                       className="flex-1 rounded-xl gap-2"
-                      >
-                       <ExternalLink className="w-4 h-4" />
-                       Verify
-                      </Button>
-                    </div>
-                    <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl p-3">
-                      <p className="text-xs text-blue-900 dark:text-blue-100">
-                        💡 <strong>Tip:</strong> Verification helps build trust with customers and increases your booking rate.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Contractor Verification — license/LLC/EIN, reviewed manually for now (see src/lib/verification) */}
+                {/* Contractor Verification — license/LLC/EIN, reviewed manually for now (see src/lib/verification). This used to sit alongside a
+                    separate, older "EIN & DPOR Verification" card that wrote a legacy, undeclared user.ein field and hardcoded a Maryland DPOR
+                    link regardless of the contractor's actual state — removed as part of the Phase 0 re-audit; this is now the single verification UI. */}
                 <div className="bg-card rounded-2xl border border-border p-6 space-y-4">
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="font-heading font-bold text-sm text-foreground">Contractor Verification</h2>
@@ -540,6 +444,11 @@ export default function Account() {
                         </DrawerContent>
                       </Drawer>
                     </div>
+                    <VerificationLinksPanel
+                      state={verificationForm.state}
+                      licenseNumber={verificationForm.license_number}
+                      einNumber={verificationForm.ein_number}
+                    />
                     <div>
                       <label className="text-xs font-semibold text-muted-foreground mb-1 block">Business Name</label>
                       <input
@@ -691,12 +600,15 @@ export default function Account() {
 
               <button
                 onClick={async () => {
-                  if (!navigator.contacts) {
+                  // Contact Picker API — experimental, not part of the
+                  // standard DOM lib types this project targets.
+                  const nav = /** @type {any} */ (navigator);
+                  if (!nav.contacts) {
                     toast.error("Contacts API not supported on this device");
                     return;
                   }
                   try {
-                    const contacts = await navigator.contacts.select(
+                    const contacts = await nav.contacts.select(
                       ['name', 'tel', 'email'],
                       { multiple: true }
                     );
@@ -820,7 +732,7 @@ export default function Account() {
                         try {
                           await base44.functions.invoke('cancelSubscription', {});
                           toast.success('Subscription cancelled successfully!');
-                          setUser(prev => ({ ...prev, realtor_pro: null }));
+                          setUser(prev => ({ ...prev, plan: 'free' }));
                         } catch (error) {
                           toast.error('Failed to cancel subscription');
                         } finally {

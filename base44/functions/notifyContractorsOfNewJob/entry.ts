@@ -1,5 +1,33 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+// Great-circle distance in miles — mirrors haversineMiles in src/lib/geo.js
+// (not imported — see acceptJob/entry.ts's header comment on why Deno
+// functions in this repo duplicate small src/lib helpers instead).
+function haversineMiles(lat1, lng1, lat2, lng2) {
+  const R = 3958.8;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function geocodeZip(zip) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(zip)}&country=us&limit=1`);
+    const data = await res.json();
+    if (data[0]) {
+      const lat = parseFloat(data[0].lat);
+      const lng = parseFloat(data[0].lon);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    }
+  } catch (e) {
+    console.error('Zip geocode failed:', e.message);
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -22,11 +50,38 @@ Deno.serve(async (req) => {
       return Response.json({ message: 'No category on booking' });
     }
 
-    // Find contractors in the job's category with this preferred zip code.
-    const contractors = await base44.asServiceRole.entities.Contractor.filter({
-      preferred_zip_code: jobZip,
-      category: booking.category
-    }, '-created_date', 100);
+    // Previously required an EXACT preferred_zip_code match, which silently
+    // under-notified any contractor whose preferred zip was nearby but not
+    // identical (e.g. one block over, in the next zip code) — even though
+    // they set a preferred_miles_distance radius specifically to be reached
+    // for cases like that. Category-scoped here; zip/radius eligibility is
+    // resolved below now that we have the full candidate set.
+    const candidates = await base44.asServiceRole.entities.Contractor.filter({
+      category: booking.category,
+    }, '-created_date', 200);
+
+    const withZipPreference = candidates.filter((c) => c.preferred_zip_code);
+
+    let contractors = withZipPreference.filter((c) => c.preferred_zip_code === jobZip);
+
+    // For near-misses (not an exact zip match) with a radius set, geocode
+    // and check actual distance — bounded to just this smaller set so a
+    // typical run makes only a handful of geocode calls, not one per
+    // candidate. Falls back to exact-match-only (today's behavior) if the
+    // job has no geocoded coordinates on file.
+    if (Number.isFinite(booking.job_lat) && Number.isFinite(booking.job_lng)) {
+      const nearMisses = withZipPreference.filter(
+        (c) => c.preferred_zip_code !== jobZip && Number.isFinite(c.preferred_miles_distance)
+      );
+      for (const contractor of nearMisses) {
+        const coords = await geocodeZip(contractor.preferred_zip_code);
+        if (!coords) continue;
+        const distance = haversineMiles(coords.lat, coords.lng, booking.job_lat, booking.job_lng);
+        if (distance <= contractor.preferred_miles_distance) {
+          contractors.push(contractor);
+        }
+      }
+    }
 
     if (contractors.length === 0) {
       console.log(`No ${booking.category} contractors found for zip ${jobZip}`);

@@ -12,6 +12,9 @@ import ReminderBanner, { useActiveReminders } from "../components/ReminderBanner
 import { haversineMiles, geocodeAddress } from "@/lib/geo";
 import { isProviderEligibleForJob, filterJobsForViewer } from "@/lib/matching";
 
+// _getIconUrl is a real internal property Leaflet's bundler-icon-path
+// workaround needs, just not part of its public (and thus typed) API surface.
+// @ts-ignore
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",

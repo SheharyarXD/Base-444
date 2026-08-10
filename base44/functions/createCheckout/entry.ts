@@ -33,6 +33,22 @@ Deno.serve(async (req) => {
     const { name: planName, price, isSubscription } = plan;
     const origin = req.headers.get("Origin") || "https://app.base44.app";
 
+    // Unguessable, single-use, server-minted token binding this specific
+    // checkout attempt to this user + plan. Wix's hosted checkout only ever
+    // redirects the browser to thankYouPageUrl after a completed payment, so
+    // a token that only ever leaves this server via that redirect — and gets
+    // consumed exactly once by confirmPurchase — closes the free-upgrade path
+    // that used to exist (granting a plan straight from a client-visible
+    // ?plan= query param with no proof of payment). See confirmPurchase's
+    // header comment for the full reasoning, including its documented limits.
+    const token = crypto.randomUUID();
+    await base44.asServiceRole.entities.PurchaseIntent.create({
+      token,
+      user_email: user.email,
+      plan_id: planId,
+      status: "pending",
+    });
+
     const item = {
       name: planName,
       quantity: 1,
@@ -68,7 +84,7 @@ Deno.serve(async (req) => {
           },
           callbackUrls: {
             postFlowUrl: origin,
-            thankYouPageUrl: `${origin}/thank-you?plan=${planId}`,
+            thankYouPageUrl: `${origin}/thank-you?plan=${planId}&token=${token}`,
           },
         }),
       }

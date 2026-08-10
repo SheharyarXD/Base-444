@@ -16,24 +16,7 @@ import { motion } from "framer-motion";
 import { haversineFeet } from "@/lib/geo";
 import { canViewFullJobDetails, maskedCityStateZip } from "@/lib/jobPrivacy";
 import { isProviderEligibleForJob } from "@/lib/matching";
-
-const statusStyles = {
-  pending: "bg-amber-50 text-amber-700 border-amber-200",
-  accepted: "bg-blue-50 text-blue-700 border-blue-200",
-  on_the_way: "bg-violet-50 text-violet-700 border-violet-200",
-  in_progress: "bg-primary/10 text-primary border-primary/20",
-  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  cancelled: "bg-red-50 text-red-600 border-red-200",
-};
-
-const statusLabels = {
-  pending: "Pending",
-  accepted: "Accepted",
-  on_the_way: "On The Way",
-  in_progress: "In Progress",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
+import { BOOKING_STATUS_STYLES as statusStyles, BOOKING_STATUS_LABELS as statusLabels } from "@/lib/bookingStatus";
 
 export default function BookingDetail() {
   const { id } = useParams();
@@ -59,6 +42,8 @@ export default function BookingDetail() {
   const [contractorBusinessName, setContractorBusinessName] = useState("");
   const [contractorEntityId, setContractorEntityId] = useState(null);
   const [viewerContractor, setViewerContractor] = useState(null);
+  const [pendingProviderThreads, setPendingProviderThreads] = useState([]);
+  const [selectedCounterpart, setSelectedCounterpart] = useState(null);
   const { reminders, dismiss: dismissReminder } = useActiveReminders({
     recipientEmail: user?.email,
     bookingId: id,
@@ -91,6 +76,26 @@ export default function BookingDetail() {
         base44.entities.Contractor.filter({ created_by: me.email }).then(contractors => {
           setViewerContractor(contractors[0] || null);
         }).catch(() => {});
+      }
+
+      // A still-pending job has no single fixed counterpart yet
+      // (accepted_by_email is unset) — but more than one eligible provider
+      // can legitimately have already messaged the customer about it. Find
+      // who's actually reached out so the customer can pick who to reply to,
+      // instead of the chat silently saving replies with recipient_email:
+      // undefined (previously unreadable by anyone).
+      if (b?.status === "pending" && me?.email === b?.customer_email) {
+        base44.entities.Message.filter({ booking_id: id, recipient_email: me.email }, "created_date", 100)
+          .then((msgs) => {
+            const bySender = new Map();
+            for (const m of msgs) {
+              if (!bySender.has(m.sender_email)) bySender.set(m.sender_email, m.sender_name || m.sender_email);
+            }
+            const threads = [...bySender.entries()].map(([email, name]) => ({ email, name }));
+            setPendingProviderThreads(threads);
+            if (threads.length === 1) setSelectedCounterpart(threads[0].email);
+          })
+          .catch(() => {});
       }
 
       // Fetch contractor's business name and entity ID if booking has an accepted contractor
@@ -192,28 +197,40 @@ export default function BookingDetail() {
     };
   }, [user?.email, booking?.status, id, jobCoords]);
 
-  async function cancelBooking() {
-    setOptimisticStatus("cancelled");
+  // Routed through updateBookingStatus (not a raw Booking.update) — that
+  // function re-checks the current status and caller identity server-side
+  // before writing, and is what actually enforces the transition table
+  // (illegal/out-of-order status changes used to be possible via a raw
+  // client call, since Booking's RLS is row-level only).
+  async function changeStatus(status, { successMessage, errorMessage }) {
+    setOptimisticStatus(status);
     try {
-      await base44.entities.Booking.update(id, { status: "cancelled" });
-      setBooking({ ...booking, status: "cancelled" });
-      toast.success("Booking cancelled");
+      const res = await base44.functions.invoke('updateBookingStatus', { bookingId: id, status });
+      if (res.data?.error) {
+        setOptimisticStatus(null);
+        toast.error(res.data.error);
+        return false;
+      }
+      setBooking({ ...booking, status });
+      toast.success(successMessage);
+      return true;
     } catch (error) {
       setOptimisticStatus(null);
-      toast.error("Failed to cancel booking");
+      toast.error(error?.response?.data?.error || errorMessage);
+      return false;
     }
   }
 
-  async function completeBooking() {
-    setOptimisticStatus("completed");
-    try {
-      await base44.entities.Booking.update(id, { status: "completed" });
-      setBooking({ ...booking, status: "completed" });
-      toast.success("Job marked as completed!");
-    } catch (error) {
-      setOptimisticStatus(null);
-      toast.error("Failed to complete booking");
-    }
+  function cancelBooking() {
+    return changeStatus("cancelled", { successMessage: "Booking cancelled", errorMessage: "Failed to cancel booking" });
+  }
+
+  function markArrived() {
+    return changeStatus("in_progress", { successMessage: "Marked as arrived!", errorMessage: "Failed to update status" });
+  }
+
+  function completeBooking() {
+    return changeStatus("completed", { successMessage: "Job marked as completed!", errorMessage: "Failed to complete booking" });
   }
 
   async function acceptBooking() {
@@ -239,20 +256,15 @@ export default function BookingDetail() {
 
   async function startOnTheWay() {
     setStartingOnTheWay(true);
-    try {
-      await base44.entities.Booking.update(id, { status: "on_the_way" });
-      setBooking({ ...booking, status: "on_the_way" });
-      toast.success("Customer has been notified you're on the way!");
+    const ok = await changeStatus("on_the_way", { successMessage: "Customer has been notified you're on the way!", errorMessage: "Failed to update status" });
+    if (ok) {
       base44.functions.invoke('notifyCustomerOnTheWay', { booking_id: id }).catch(() => {});
       // The reminder should disappear immediately once "On The Way" is
       // pressed — dismiss it as part of the same action rather than waiting
       // for the next scheduled reminder-engine pass.
       reminders.forEach((r) => dismissReminder(r.id));
-    } catch (error) {
-      toast.error("Failed to update status");
-    } finally {
-      setStartingOnTheWay(false);
     }
+    setStartingOnTheWay(false);
   }
 
   async function downloadPDF() {
@@ -336,8 +348,16 @@ export default function BookingDetail() {
   }
 
   const isCustomer = user && booking.customer_email === user.email;
+  const isAcceptedContractor = !!booking.accepted_by_email && user?.email === booking.accepted_by_email;
   const isContractorOrHandyman = ["Contractor", "Handyman"].includes(user?.user_type);
-  const profileIncomplete = isContractorOrHandyman && (!user?.ein || !user?.ein?.trim());
+  // Only meaningful while the job is still pending and this viewer hasn't
+  // completed their Contractor profile yet — previously keyed off a legacy
+  // `user.ein` field that isn't declared on User.jsonc and directly
+  // contradicted ContractorSetup.jsx's own "verification is optional, never
+  // blocks job acceptance" comment. Once a booking is accepted, the accepted
+  // contractor is guaranteed to have a complete profile already (acceptJob
+  // requires one), so this is always false for them.
+  const profileIncomplete = isContractorOrHandyman && booking.status === "pending" && !viewerContractor;
   // Booking reads are visible to any authenticated user while a job is still
   // "pending" (needed for open-job discovery in JobsMap), so a still-pending
   // booking's exact address must stay masked here too for anyone who isn't
@@ -349,7 +369,13 @@ export default function BookingDetail() {
   // who can even load this page to the customer/accepted provider/admin.
   const isEligiblePendingProvider =
     isContractorOrHandyman && isProviderEligibleForJob(viewerContractor, booking);
-  const canShowChat = isCustomer || booking.status !== "pending" || isEligiblePendingProvider;
+  // A still-pending booking has no fixed counterpart yet — for the customer,
+  // only show chat once at least one provider has actually reached out (see
+  // pendingProviderThreads above); for a provider, only once they're
+  // eligible to act on it at all.
+  const canShowChat =
+    (isCustomer && (booking.status !== "pending" || pendingProviderThreads.length > 0)) ||
+    (!isCustomer && (booking.status !== "pending" || isEligiblePendingProvider));
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 pb-24 md:pb-12">
@@ -610,25 +636,56 @@ export default function BookingDetail() {
           </div>
         )}
 
-        {/* Review Form Modal */}
-        {reviewFormOpen && isCustomer && (
+        {/* Review Form Modal — props previously didn't match ReviewForm's
+            actual signature (bookingId/onClose vs booking/open/onOpenChange),
+            so `open` was always undefined and this dialog never rendered. */}
+        {isCustomer && (
           <ReviewForm
+            booking={booking}
             contractorId={booking.contractor_id}
-            bookingId={id}
-            onClose={() => {
-              setReviewFormOpen(false);
-              setShowReviewPrompt(false);
-            }}
+            open={reviewFormOpen}
+            onOpenChange={setReviewFormOpen}
+            onSuccess={() => setShowReviewPrompt(false)}
           />
         )}
 
         {/* Chat */}
-        {user && !profileIncomplete && canShowChat && <BookingChat bookingId={id} currentUser={user} booking={{ ...booking, contractor_business_name: contractorBusinessName, contractor_id: contractorEntityId || booking.contractor_id }} isCustomer={isCustomer} />}
+        {/* When more than one provider has messaged about a still-pending
+            job, let the customer pick who they're replying to — otherwise
+            their replies would merge into one undifferentiated thread with
+            no way to tell providers apart. */}
+        {isCustomer && booking.status === "pending" && pendingProviderThreads.length > 1 && (
+          <div className="bg-card rounded-2xl border border-border p-4">
+            <p className="text-sm font-semibold text-foreground mb-2">Replying to</p>
+            <div className="flex flex-wrap gap-2">
+              {pendingProviderThreads.map((t) => (
+                <button
+                  key={t.email}
+                  onClick={() => setSelectedCounterpart(t.email)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                    selectedCounterpart === t.email ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {user && !profileIncomplete && canShowChat && (!isCustomer || booking.status !== "pending" || selectedCounterpart) && (
+          <BookingChat
+            bookingId={id}
+            currentUser={user}
+            booking={{ ...booking, contractor_business_name: contractorBusinessName, contractor_id: contractorEntityId || booking.contractor_id }}
+            isCustomer={isCustomer}
+            counterpartEmail={booking.status === "pending" ? selectedCounterpart : null}
+          />
+        )}
         {profileIncomplete && (
           <div className="bg-amber-50 dark:bg-amber-950 border border-amber-300 dark:border-amber-700 rounded-2xl p-5">
             <p className="font-semibold text-amber-800 dark:text-amber-200 mb-1">⚠️ Profile Incomplete</p>
-            <p className="text-sm text-amber-700 dark:text-amber-300">Please add your <strong>EIN</strong> or <strong>Contractor License Number</strong> in your account settings to accept jobs and send messages.</p>
-            <a href="/account" className="inline-block mt-2 text-sm font-bold text-amber-800 dark:text-amber-200 underline">Go to Account Settings →</a>
+            <p className="text-sm text-amber-700 dark:text-amber-300">Complete your provider profile to accept jobs and send messages.</p>
+            <a href="/contractor-setup" className="inline-block mt-2 text-sm font-bold text-amber-800 dark:text-amber-200 underline">Complete Your Profile →</a>
           </div>
         )}
 
@@ -640,7 +697,7 @@ export default function BookingDetail() {
             <>
               <div className="flex gap-3">
                 <Button
-                  onClick={() => navigate(`/contractor/${booking.contractor_id}`)}
+                  onClick={() => setReviewFormOpen(true)}
                   className="flex-1 rounded-2xl h-12 min-h-[44px] font-heading font-bold"
                 >
                   Leave a Review
@@ -665,24 +722,15 @@ export default function BookingDetail() {
             </>
           )}
           {booking.status === "completed" && !isCustomer && (
-            <>
-              <Button
-               onClick={downloadPDF}
-               disabled={downloadingPDF}
-               variant="outline"
-               className="flex-1 rounded-2xl h-12 min-h-[44px] font-heading font-bold gap-2"
-              >
-                <Download className="w-4 h-4" />
-                {downloadingPDF ? 'Generating...' : 'Download Summary'}
-              </Button>
-              <Button
-                onClick={deleteBooking}
-                variant="outline"
-                className="w-full rounded-2xl h-12 min-h-[44px] font-heading font-bold text-destructive border-destructive/30 hover:bg-destructive/5"
-              >
-                Delete Booking
-              </Button>
-            </>
+            <Button
+             onClick={downloadPDF}
+             disabled={downloadingPDF}
+             variant="outline"
+             className="flex-1 rounded-2xl h-12 min-h-[44px] font-heading font-bold gap-2"
+            >
+              <Download className="w-4 h-4" />
+              {downloadingPDF ? 'Generating...' : 'Download Summary'}
+            </Button>
           )}
 
           <div className="flex gap-3">
@@ -726,7 +774,7 @@ export default function BookingDetail() {
               </Dialog>
             )}
 
-            {booking.status === "accepted" && !isCustomer && user?.email === booking.accepted_by_email && (
+            {booking.status === "accepted" && isAcceptedContractor && (
               <Button
                 onClick={startOnTheWay}
                 disabled={startingOnTheWay}
@@ -737,7 +785,24 @@ export default function BookingDetail() {
               </Button>
             )}
 
-            {(["pending", "accepted", "on_the_way", "in_progress"].includes(booking.status) || optimisticStatus === "cancelled") && (
+            {/* "Arrived" was previously only reachable via RealtorDashboard's
+                geofence auto-detection — a normal (non-Realtor) job had no UI
+                path from on_the_way to in_progress at all, so it could never
+                be marked completed. This is that missing step, available to
+                the accepted provider on any booking. */}
+            {booking.status === "on_the_way" && isAcceptedContractor && (
+              <Button
+                onClick={markArrived}
+                className="flex-1 rounded-2xl h-12 min-h-[44px] font-heading font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+              >
+                <CheckCircle className="w-4 h-4" />
+                I've Arrived
+              </Button>
+            )}
+
+            {((booking.status === "pending" && isCustomer) ||
+              (["accepted", "on_the_way", "in_progress"].includes(booking.status) && (isCustomer || isAcceptedContractor)) ||
+              optimisticStatus === "cancelled") && (
               <Button
                 variant="outline"
                 className="flex-1 rounded-2xl h-12 min-h-[44px] font-heading font-bold text-destructive border-destructive/30 hover:bg-destructive/5"
@@ -748,7 +813,11 @@ export default function BookingDetail() {
               </Button>
             )}
           </div>
-          {(booking.status === "cancelled" || booking.status === "completed") && (
+          {/* Delete (hard-remove the record) is restricted to the customer —
+              Booking's delete RLS never granted accepted_by_email delete
+              rights, so a contractor seeing this button previously got a
+              silent RLS-denied failure. */}
+          {isCustomer && (booking.status === "cancelled" || booking.status === "completed") && (
             <Button
               onClick={deleteBooking}
               variant="outline"

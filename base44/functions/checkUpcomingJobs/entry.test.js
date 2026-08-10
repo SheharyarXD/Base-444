@@ -172,6 +172,45 @@ describe("checkUpcomingJobs — reminder engine", () => {
     expect(mockClient.asServiceRole.entities.Reminder.create).not.toHaveBeenCalled();
   });
 
+  // Regression test for the confirmed Phase 0 bug: a legacy inline block
+  // (notified_30min) used to send its own "starting soon" email at the same
+  // ~30-minutes-before-start moment as job_upcoming_final, independently —
+  // contractors got two emails at once. That block is gone; only one email
+  // (from job_upcoming_final) should fire once the earlier-due rules
+  // (morning, hours-before) have already been sent on a prior check.
+  it("sends exactly one 'starting soon' email at the 30-minutes-before mark, not two", async () => {
+    vi.setSystemTime(new Date("2026-08-01T11:30:00")); // exactly 30 min before a 12:00 "Afternoon" start
+    try {
+      mockClient.asServiceRole.entities.Booking.filter.mockResolvedValue([
+        {
+          id: "b5",
+          status: "on_the_way",
+          accepted_by_email: "pro@x.com",
+          accepted_by_name: "Pro",
+          job_title: "Fix fence",
+          address: "1 Main St",
+          preferred_date: "2026-08-01",
+          preferred_time: "Afternoon (12pm-4pm)",
+        },
+      ]);
+      // The morning and hours-before rules were already due (7am, 9am) and
+      // sent on an earlier check — only job_upcoming_final is still pending.
+      mockClient.asServiceRole.entities.Reminder.filter.mockResolvedValue([
+        { id: "r-morning", type: "job_upcoming_morning", booking_id: "b5", status: "sent", dedupe_key: "job_upcoming_morning:b5" },
+        { id: "r-hours", type: "job_upcoming_hours_before", booking_id: "b5", status: "sent", dedupe_key: "job_upcoming_hours_before:b5" },
+      ]);
+
+      await handler(makeReq());
+
+      expect(mockClient.asServiceRole.integrations.Core.SendEmail).toHaveBeenCalledTimes(1);
+      expect(mockClient.asServiceRole.integrations.Core.SendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ subject: expect.stringContaining("Job starting soon") })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("still returns the legacy 'checked' count alongside the new reminder stats", async () => {
     mockClient.asServiceRole.entities.Booking.filter.mockResolvedValue([]);
     const res = await handler(makeReq());

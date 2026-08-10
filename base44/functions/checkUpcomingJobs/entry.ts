@@ -5,6 +5,18 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 // comment on the src/↔Deno boundary in this codebase). Runs from this
 // existing scheduled function rather than a new one, per "integrate with
 // existing scheduling instead of creating a duplicate."
+//
+// Phase 0 re-audit found and removed a second, independent legacy reminder
+// path that used to live in this same handler: an inline loop keyed off
+// Booking.notified_30min/notified_10min that sent its own "job starting
+// soon" email ~30 minutes before start, running alongside (and firing
+// alongside — not deduped against) this engine's own job_upcoming_final
+// rule, which also fires 30 minutes before start. Contractors were getting
+// two separate emails for the same moment. The engine's four rules
+// (on_the_way_pending, job_upcoming_morning, job_upcoming_hours_before,
+// job_upcoming_final) already cover every reminder type asked for; the
+// legacy 10-minute-before email had no equivalent here and was dropped
+// rather than reintroduced, since it wasn't part of that required set.
 const EXCLUDED_BOOKING_STATUSES = ['cancelled', 'completed'];
 const ON_THE_WAY_ESCALATION_MINUTES = 20;
 const EXPIRED_GRACE_MINUTES = 60;
@@ -163,56 +175,6 @@ Deno.serve(async (req) => {
     const now = new Date();
 
     const reminderResults = await runReminderEngine(base44, bookings, now);
-
-    for (const booking of bookings) {
-      if (!booking.preferred_date || !booking.preferred_time || !booking.accepted_by_email) continue;
-
-      // Parse job time
-      const jobDate = new Date(booking.preferred_date);
-      const timeMatch = booking.preferred_time.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/i);
-      
-      let jobTime = new Date(booking.preferred_date);
-      if (booking.preferred_time === 'Flexible') {
-        continue; // Skip flexible times
-      } else if (timeMatch) {
-        // Handle ranges like "Morning (8am-12pm)"
-        const match = booking.preferred_time.match(/(\d{1,2})(am|pm)/i);
-        if (match) {
-          let hours = parseInt(match[1]);
-          const period = match[2].toLowerCase();
-          if (period === 'pm' && hours !== 12) hours += 12;
-          if (period === 'am' && hours === 12) hours = 0;
-          jobTime.setHours(hours, 0, 0, 0);
-        }
-      } else {
-        continue;
-      }
-
-      const diffMs = jobTime.getTime() - now.getTime();
-      const diffMins = diffMs / 1000 / 60;
-
-      // Check for 30-min notification
-      if (diffMins > 29 && diffMins <= 30 && !booking.notified_30min) {
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          to: booking.accepted_by_email,
-          subject: '⏰ Reminder: Job in 30 minutes',
-          body: `Hi ${booking.accepted_by_name || 'Contractor'},\n\nThis is a reminder that your job "${booking.job_title}" is scheduled in 30 minutes.\n\nTime: ${booking.preferred_time}\nLocation: ${booking.address}, ${booking.city}, ${booking.state} ${booking.zip}\n\nSee you soon!`
-        });
-        await base44.asServiceRole.entities.Booking.update(booking.id, { notified_30min: true });
-        console.log(`30-min notification sent to ${booking.accepted_by_email} for job ${booking.id}`);
-      }
-
-      // Check for 10-min notification
-      if (diffMins > 9 && diffMins <= 10 && !booking.notified_10min) {
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          to: booking.accepted_by_email,
-          subject: '⏰ Reminder: Job in 10 minutes',
-          body: `Hi ${booking.accepted_by_name || 'Contractor'},\n\nYour job "${booking.job_title}" is starting in 10 minutes!\n\nLocation: ${booking.address}, ${booking.city}, ${booking.state} ${booking.zip}\n\nMake sure you're on your way!`
-        });
-        await base44.asServiceRole.entities.Booking.update(booking.id, { notified_10min: true });
-        console.log(`10-min notification sent to ${booking.accepted_by_email} for job ${booking.id}`);
-      }
-    }
 
     return Response.json({
       success: true,

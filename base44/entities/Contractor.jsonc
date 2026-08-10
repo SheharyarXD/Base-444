@@ -93,8 +93,15 @@
     },
     "is_verified_pro": {
       "type": "boolean",
-      "title": "Verified Pro Badge",
+      "title": "Pro Badge",
+      "description": "A purchased cosmetic badge (Plans page 'Pro Badge' add-on) — distinct from verification_status, which is the real, server-owned license/business verification outcome. Never render this as a substitute for a 'Verified' claim.",
       "default": false
+    },
+    "featured_until": {
+      "type": "string",
+      "title": "Featured Until",
+      "format": "date-time",
+      "description": "Set by confirmPurchase after a Featured Listing purchase (now + 7 days). No current UI surface consumes this for placement — see the Phase 2 final audit."
     },
     "preferred_zip_code": {
       "type": "string",

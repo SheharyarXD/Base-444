@@ -1,6 +1,6 @@
 import { Star } from "lucide-react";
 
-export default function StarRating({ rating, onRate, size = "md", interactive = false }) {
+export default function StarRating({ rating, onRate = undefined, size = "md", interactive = false }) {
   const sizeClasses = {
     sm: "w-4 h-4",
     md: "w-5 h-5",

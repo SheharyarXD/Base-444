@@ -155,16 +155,6 @@
       "items": {
         "type": "string"
       }
-    },
-    "notified_30min": {
-      "type": "boolean",
-      "title": "Notified 30 Min Before",
-      "default": false
-    },
-    "notified_10min": {
-      "type": "boolean",
-      "title": "Notified 10 Min Before",
-      "default": false
     }
   },
   "required": [

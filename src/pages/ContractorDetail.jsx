@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Star, Clock, MapPin, CheckCircle, Briefcase, Calendar, Shield, ExternalLink } from "lucide-react";
+import { ArrowLeft, Star, Clock, MapPin, CheckCircle, Briefcase, Calendar, Shield, ExternalLink, BadgeCheck, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { base44 } from "@/api/base44Client";
@@ -8,6 +8,17 @@ import StarRating from "../components/StarRating";
 import ReviewForm from "../components/ReviewForm";
 import { motion } from "framer-motion";
 import moment from "moment";
+import { getStateVerificationLinks } from "@/lib/stateVerificationLinks";
+
+// Public profile page — a license number shouldn't be fully exposed to any
+// authenticated marketplace visitor. Shows just enough to be recognizable
+// as "the number on file" without exposing it in full.
+function maskLicenseNumber(value) {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (trimmed.length <= 4) return "•".repeat(trimmed.length);
+  return `${trimmed.slice(0, 2)}${"•".repeat(trimmed.length - 4)}${trimmed.slice(-2)}`;
+}
 
 export default function ContractorDetail() {
   const { id } = useParams();
@@ -17,6 +28,7 @@ export default function ContractorDetail() {
   const [loading, setLoading] = useState(true);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [expandedReview, setExpandedReview] = useState(null);
+  const [reviewableBooking, setReviewableBooking] = useState(null);
 
   useEffect(() => {
     async function load() {
@@ -31,12 +43,43 @@ export default function ContractorDetail() {
         ]);
         setContractor(c);
         setReviews(r);
+        await loadReviewEligibility(c);
       } catch (error) {
         console.error('Error loading contractor:', error);
       } finally {
         setLoading(false);
       }
     }
+
+    // "Leave Review" used to be shown to any signed-in visitor with no
+    // booking check at all, and never passed a booking_id — so submitted
+    // reviews weren't tied to any real job. Now it only appears once this
+    // viewer has a completed booking with this contractor that they haven't
+    // already reviewed. A direct booking carries contractor_id; a booking
+    // that came from an open job post + acceptJob only carries
+    // accepted_by_email — both are checked, same fallback as
+    // submitReview/entry.ts and BookingDetail.jsx use for the same reason.
+    async function loadReviewEligibility(c) {
+      const me = await base44.auth.me().catch(() => null);
+      if (!me) return;
+      const completed = await base44.entities.Booking.filter(
+        { customer_email: me.email, status: "completed" },
+        "-created_date",
+        100
+      ).catch(() => []);
+      const withThisContractor = completed.filter(
+        (b) => b.contractor_id === id || (c?.created_by && b.accepted_by_email === c.created_by)
+      );
+      if (withThisContractor.length === 0) return;
+      const bookingIds = withThisContractor.map((b) => b.id);
+      const existingReviews = await Promise.all(
+        bookingIds.map((bid) => base44.entities.Review.filter({ booking_id: bid }, "", 1))
+      );
+      const reviewedIds = new Set(bookingIds.filter((_, i) => existingReviews[i].length > 0));
+      const unreviewed = withThisContractor.find((b) => !reviewedIds.has(b.id));
+      setReviewableBooking(unreviewed || null);
+    }
+
     load();
 
     const unsubscribe = base44.entities.Review.subscribe((event) => {
@@ -106,16 +149,40 @@ export default function ContractorDetail() {
                 <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-foreground">
                   {contractor.name}
                 </h1>
+                {/* Real, server-owned verification badge — derived from
+                    verification_status (license/business/EIN review, see
+                    submitContractorVerification), never from is_verified_pro
+                    (a purchased cosmetic "Pro Badge" with no relation to
+                    actual verification — see Contractor.jsonc's is_verified_pro
+                    description for why those two must stay visually distinct). */}
+                {contractor.verification_status === "verified" && (
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-800 rounded-full px-2.5 py-1"
+                    title="License, business name, and EIN/LLC verified by Linked"
+                  >
+                    <BadgeCheck className="w-3.5 h-3.5" />
+                    Verified
+                  </span>
+                )}
                 {contractor.is_verified_pro && (
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-full px-2.5 py-1"
+                    title="Purchased Pro badge — separate from license verification"
+                  >
+                    <Shield className="w-3 h-3" />
+                    Pro
+                  </span>
+                )}
+                {contractor.state && (
                   <a
-                    href={`https://www.dpor.virginia.gov/LicenseLookup/?search=${encodeURIComponent(contractor.name)}`}
+                    href={getStateVerificationLinks(contractor.state)?.licenseBoardUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground border border-border rounded-full px-2.5 py-1 hover:bg-secondary transition-all"
-                    title="Verify license on DPOR"
+                    title={getStateVerificationLinks(contractor.state)?.licenseBoardLabel}
                   >
                     <ExternalLink className="w-3 h-3" />
-                    Verify on DPOR
+                    Verify in {contractor.state}
                   </a>
                 )}
                 {contractor.is_available && (
@@ -148,6 +215,29 @@ export default function ContractorDetail() {
               </div>
             ))}
           </div>
+
+          {/* Business & License — business_name shown whenever set (basic
+              business identity); the license number is only surfaced once
+              verification_status is actually 'verified' (an unverified or
+              rejected number carries no confirmed meaning and showing it
+              publicly could be misread as an endorsement), and even then
+              only masked — this is a public profile page. */}
+          {(contractor.business_name || (contractor.verification_status === "verified" && contractor.license_number)) && (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground mb-6 bg-secondary/30 rounded-xl p-3">
+              {contractor.business_name && (
+                <span className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5" />
+                  {contractor.business_name}
+                </span>
+              )}
+              {contractor.verification_status === "verified" && contractor.license_number && (
+                <span className="flex items-center gap-1.5">
+                  <BadgeCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  License {maskLicenseNumber(contractor.license_number)} ({contractor.state})
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Description */}
           {contractor.description && (
@@ -189,6 +279,8 @@ export default function ContractorDetail() {
             <Button
               onClick={() => setReviewOpen(true)}
               variant="outline"
+              disabled={!reviewableBooking}
+              title={reviewableBooking ? undefined : "Complete a booking with this contractor to leave a review"}
               className="flex-1 rounded-2xl h-14 font-heading font-bold text-base"
             >
               Leave Review
@@ -246,8 +338,9 @@ export default function ContractorDetail() {
         <ReviewForm
           open={reviewOpen}
           onOpenChange={setReviewOpen}
+          booking={reviewableBooking}
           contractorId={id}
-          onSuccess={() => setReviews([...reviews])}
+          onSuccess={() => setReviewableBooking(null)}
         />
       </div>
     </div>

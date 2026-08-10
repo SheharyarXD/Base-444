@@ -1,6 +1,11 @@
 const isNode = typeof window === 'undefined';
 const windowObj = isNode ? { localStorage: new Map() } : window;
-const storage = windowObj.localStorage;
+// Every call site below is reached only through getAppParamValue, which
+// returns early `if (isNode)` before ever touching `storage` — so in
+// practice this is always the real Storage, never the Map placeholder used
+// just to keep `windowObj.localStorage` non-null in a Node/SSR context.
+// TS can't see that cross-function guarantee, hence the cast.
+const storage = /** @type {Storage} */ (windowObj.localStorage);
 
 const toSnakeCase = (str) => {
 	return str.replace(/([A-Z])/g, '_$1').toLowerCase();

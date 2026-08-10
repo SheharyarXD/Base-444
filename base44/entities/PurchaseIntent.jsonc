@@ -1,0 +1,64 @@
+{
+  "name": "PurchaseIntent",
+  "type": "object",
+  "properties": {
+    "token": {
+      "type": "string",
+      "title": "Token",
+      "description": "Unguessable single-use token minted by createCheckout and embedded in the Wix thankYouPageUrl redirect. confirmPurchase consumes it exactly once before granting any plan entitlement — see that function's header comment for why this closes the free-upgrade exploit without depending on Wix's private order-verification API contract."
+    },
+    "user_email": {
+      "type": "string",
+      "title": "Purchasing User Email"
+    },
+    "plan_id": {
+      "type": "string",
+      "title": "Plan ID",
+      "description": "Matches a key in the PLANS table duplicated in createCheckout/entry.ts and confirmPurchase/entry.ts."
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "pending",
+        "completed"
+      ],
+      "default": "pending"
+    }
+  },
+  "required": [
+    "token",
+    "user_email",
+    "plan_id",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

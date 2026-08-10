@@ -17,6 +17,7 @@ export default function BookContractor() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [contractor, setContractor] = useState(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [timeDrawerOpen, setTimeDrawerOpen] = useState(false);
@@ -44,6 +45,7 @@ export default function BookContractor() {
         base44.auth.me(),
       ]);
       setContractor(c);
+      setUser(me);
       setForm((f) => ({
         ...f,
         customer_name: me.full_name || "",
@@ -84,6 +86,11 @@ export default function BookContractor() {
       // routing, and acceptance now key off of for every booking, direct or
       // open — see acceptJob/entry.ts and notifyContractorsOfNewJob/entry.ts.
       const coords = await geocodeAddress(form.address);
+      if (!coords) {
+        toast.error("We couldn't locate that address on the map — you can still send the request.");
+      }
+
+      const usePriorityBoost = !!user?.pending_priority_boost;
 
       await base44.entities.Booking.create({
         ...form,
@@ -93,7 +100,12 @@ export default function BookContractor() {
         category: contractor.category,
         status: "pending",
         ...(coords ? { job_lat: coords.lat, job_lng: coords.lng } : {}),
+        ...(usePriorityBoost ? { is_priority: true } : {}),
       });
+
+      if (usePriorityBoost) {
+        await base44.auth.updateMe({ pending_priority_boost: false }).catch(() => {});
+      }
 
       toast.success("Booking request sent!");
       navigate("/bookings");

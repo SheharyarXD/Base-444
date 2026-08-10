@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { SERVICE_CATEGORIES } from "@/lib/serviceCategories";
 import { US_STATES as states } from "@/lib/usStates";
 import { validateVerificationSubmission } from "@/lib/verification";
+import VerificationLinksPanel from "@/components/VerificationLinksPanel";
 
 export default function ContractorSetup() {
   const navigate = useNavigate();
@@ -288,6 +289,12 @@ export default function ContractorSetup() {
               className="w-full px-4 py-2.5 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
+
+          <VerificationLinksPanel
+            state={form.state}
+            licenseNumber={verificationForm.license_number}
+            einNumber={verificationForm.ein_number}
+          />
 
           <div>
             <label className="text-sm font-semibold text-foreground block mb-2">Business Name</label>

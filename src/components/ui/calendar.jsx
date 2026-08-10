@@ -5,6 +5,7 @@ import { DayPicker } from "react-day-picker"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
 
+/** @param {import('react-day-picker').DayPickerProps} props */
 function Calendar({
   className,
   classNames,

@@ -7,6 +7,7 @@ import { base44 } from "@/api/base44Client";
 // exposes a dismiss() that updates immediately (optimistic) so a banner
 // disappears the moment the user resolves it, without waiting on a refetch.
 // Reused by JobsMap (dashboard), Bookings (My Jobs), and BookingDetail.
+/** @param {{ recipientEmail?: string, bookingId?: string, type?: string }} [params] */
 export function useActiveReminders({ recipientEmail, bookingId, type } = {}) {
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(true);

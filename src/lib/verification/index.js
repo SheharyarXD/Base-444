@@ -30,6 +30,7 @@ const EIN_PATTERN = /^\d{2}-?\d{7}$/;
  * Validates a verification submission generically (no per-state license
  * format rules). Returns { valid, errors } where errors is a map of
  * field -> message for any invalid/missing field.
+ * @param {{ licenseNumber?: string, state?: string, businessName?: string, einNumber?: string }} [input]
  */
 export function validateVerificationSubmission({ licenseNumber, state, businessName, einNumber } = {}) {
   const errors = {};

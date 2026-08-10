@@ -8,7 +8,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { base44 } from '@/api/base44Client';
 import Layout from './components/Layout';
 import SplashScreen from './components/SplashScreen';
-import { withSuspense, Home, Browse, ContractorDetail, BookContractor, Bookings, BookingDetail, Account, RealtorDashboard, Plans, ThankYou, JobsMap, PostJob, Disclaimer, PageNotFound, Onboarding, Inbox, ContractorSetup } from './App-lazy';
+import { withSuspense, Home, ContractorDetail, BookContractor, Bookings, BookingDetail, Account, RealtorDashboard, Plans, ThankYou, JobsMap, PostJob, Disclaimer, PageNotFound, Onboarding, Inbox, ContractorSetup } from './App-lazy';
 import { useLocation } from 'react-router-dom';
 
 const AuthenticatedApp = () => {
@@ -62,13 +62,27 @@ const AuthenticatedApp = () => {
     return <SplashScreen onDone={() => setSplashDone(true)} hasAccount={true} />;
   }
 
-
-
   const PageLoader = () => (
     <div className="fixed inset-0 flex items-center justify-center">
       <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
     </div>
   );
+
+  // Onboarding.jsx (the "I am a..." account-type picker) used to be imported
+  // but never actually routed to or rendered anywhere in this file — a brand
+  // new user's user_type simply stayed unset forever, silently defaulting to
+  // Homeowner-shaped behavior in places like PostJob.jsx with no explicit
+  // choice ever made. Gated here, ahead of every route, the same way the
+  // splash screen already gates the whole app — once user_type is set (via
+  // updateUserType, which refuses to run a second time) this never shows
+  // again, consistent with "account type is fixed at signup."
+  if (!user.user_type) {
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <Onboarding />
+      </Suspense>
+    );
+  }
 
   return (
     <Suspense fallback={<PageLoader />}>
@@ -83,8 +97,22 @@ const AuthenticatedApp = () => {
                 : <Home />}
             </Suspense>
           } />
-          <Route path="/contractor-setup" element={<Suspense fallback={<PageLoader />}><ContractorSetup /></Suspense>} />
-          <Route path="/browse" element={<Suspense fallback={<PageLoader />}><Browse /></Suspense>} />
+          <Route path="/contractor-setup" element={
+            ["Contractor", "Handyman"].includes(user?.user_type)
+              ? <Suspense fallback={<PageLoader />}><ContractorSetup /></Suspense>
+              // Contractor.create's RLS only checks created_by, not user_type —
+              // a server-side user_type condition wasn't added here since it'd
+              // be an untested change to a live RLS rule (see the final audit's
+              // RLS review for the reasoning). This client route guard is the
+              // enforcement for "only providers can create a provider profile"
+              // today; documented as UI-level, not RLS-level, defense.
+              : <Navigate to="/" replace />
+          } />
+          {/* Browse.jsx (a full contractor-browsing directory) retired per
+              Phase 2's "map-driven discovery only, no contractor browsing"
+              requirement — redirects rather than 404s in case anything still
+              links here. */}
+          <Route path="/browse" element={<Navigate to="/jobs-map" replace />} />
           <Route path="/contractor/:id" element={<Suspense fallback={<PageLoader />}><ContractorDetail /></Suspense>} />
           <Route path="/book/:id" element={<Suspense fallback={<PageLoader />}><BookContractor /></Suspense>} />
           <Route path="/bookings" element={<Suspense fallback={<PageLoader />}><Bookings /></Suspense>} />
