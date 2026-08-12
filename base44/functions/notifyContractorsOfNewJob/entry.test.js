@@ -261,6 +261,40 @@ describe("notifyContractorsOfNewJob", () => {
     );
   });
 
+  // Second expanded-marketplace request — same guarantee, one representative
+  // new category covered here.
+  it("routes notifications correctly for the newly added 'Towing Service' category", async () => {
+    mockClient.asServiceRole.entities.Contractor.filter.mockImplementation(async (query) => {
+      if (query.category !== "Towing Service") return [];
+      return [{ created_by: "tow@x.com", preferred_zip_code: "10001" }];
+    });
+    mockClient.asServiceRole.entities.User.filter.mockImplementation(async ({ email }) => [{ email }]);
+    const res = await handler(
+      makeReq({ event: { type: "create", data: { ...openJob, category: "Towing Service" } } })
+    );
+    const body = await res.json();
+    expect(mockClient.asServiceRole.entities.Contractor.filter).toHaveBeenCalledWith(
+      { category: "Towing Service" },
+      "-created_date",
+      200
+    );
+    expect(mockClient.asServiceRole.integrations.Core.SendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "tow@x.com" })
+    );
+    expect(body.contractorsNotified).toBe(1);
+  });
+
+  it("does not notify a Concrete Services contractor of a Garage Door Specialists job", async () => {
+    mockClient.asServiceRole.entities.Contractor.filter.mockImplementation(async (query) => {
+      if (query.category !== "Garage Door Specialists") return [];
+      return [{ created_by: "door@x.com", preferred_zip_code: "10001" }];
+    });
+    await handler(
+      makeReq({ event: { type: "create", data: { ...openJob, category: "Concrete Services" } } })
+    );
+    expect(mockClient.asServiceRole.integrations.Core.SendEmail).not.toHaveBeenCalled();
+  });
+
   it("never notifies a contractor who set no preferred_zip_code at all", async () => {
     mockClient.asServiceRole.entities.Contractor.filter.mockResolvedValue([
       { created_by: "noprefs@x.com" },

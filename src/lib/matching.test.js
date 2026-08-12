@@ -55,6 +55,36 @@ describe("isProviderEligibleForJob", () => {
     const job = { contractor_id: "c5", category: "Pressure Washing Services" };
     expect(isProviderEligibleForJob(pressureWasher, job)).toBe(true);
   });
+
+  // Second expanded-marketplace request (Fencing Services, Heavy Wheel
+  // Mechanic, Garage Door Specialists, Tree Services, Appliance Repair,
+  // Small Engine Repair, Towing Service, Concrete Services) — same story as
+  // above: no special-casing needed, just coverage confirming they behave
+  // identically to every pre-existing category.
+  it("matches each of the newly added categories on an open job and rejects a category mismatch", () => {
+    const newCategories = [
+      "Fencing Services",
+      "Heavy Wheel Mechanic",
+      "Garage Door Specialists",
+      "Tree Services",
+      "Appliance Repair",
+      "Small Engine Repair",
+      "Towing Service",
+      "Concrete Services",
+    ];
+    for (const category of newCategories) {
+      const provider = { id: `new-${category}`, category };
+      expect(isProviderEligibleForJob(provider, { category })).toBe(true);
+      expect(isProviderEligibleForJob(provider, { category: "Plumbing" })).toBe(false);
+      expect(isProviderEligibleForJob(mechanic, { category })).toBe(false);
+    }
+  });
+
+  it("honors a direct booking to a Heavy Wheel Mechanic regardless of the booking's stamped category", () => {
+    const heavyMechanic = { id: "c6", category: "Heavy Wheel Mechanic" };
+    const job = { contractor_id: "c6", category: "Towing Service" };
+    expect(isProviderEligibleForJob(heavyMechanic, job)).toBe(true);
+  });
 });
 
 // Regression coverage for the JobsMap PII leak found in the Phase 1 audit:
@@ -92,5 +122,16 @@ describe("filterJobsForViewer", () => {
     ];
     const result = filterJobsForViewer(jobs, pressureWasher).map((j) => j.id);
     expect(result).toEqual(["j4"]);
+  });
+
+  it("correctly scopes a viewer in a category from the second expansion (Tree Services)", () => {
+    const treeService = { id: "c7", category: "Tree Services" };
+    const jobs = [
+      { id: "j7", category: "Tree Services" },
+      { id: "j8", category: "Concrete Services" },
+      { id: "j9", category: "Tree Services", contractor_id: "someone-else" },
+    ];
+    const result = filterJobsForViewer(jobs, treeService).map((j) => j.id);
+    expect(result).toEqual(["j7"]);
   });
 });

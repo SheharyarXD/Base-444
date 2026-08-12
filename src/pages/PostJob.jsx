@@ -7,7 +7,7 @@ import DatePickerInput from "../components/DatePickerInput";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { SERVICE_CATEGORIES } from "@/lib/serviceCategories";
+import { SERVICE_CATEGORIES, CATEGORY_DESCRIPTIONS } from "@/lib/serviceCategories";
 import { geocodeAddress } from "@/lib/geo";
 
 export default function PostJob() {
@@ -190,7 +190,12 @@ export default function PostJob() {
                           form.category === c ? "bg-primary text-primary-foreground" : "bg-secondary hover:bg-muted"
                         }`}
                       >
-                        {c}
+                        <span className="block">{c}</span>
+                        {CATEGORY_DESCRIPTIONS[c] && (
+                          <span className={`block text-xs font-normal mt-0.5 ${form.category === c ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                            {CATEGORY_DESCRIPTIONS[c]}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>

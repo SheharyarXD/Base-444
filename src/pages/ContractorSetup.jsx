@@ -4,7 +4,7 @@ import { ArrowRight, Loader2, ChevronDown } from "lucide-react";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
-import { SERVICE_CATEGORIES } from "@/lib/serviceCategories";
+import { SERVICE_CATEGORIES, CATEGORY_DESCRIPTIONS } from "@/lib/serviceCategories";
 import { US_STATES as states } from "@/lib/usStates";
 import { validateVerificationSubmission } from "@/lib/verification";
 import VerificationLinksPanel from "@/components/VerificationLinksPanel";
@@ -173,7 +173,12 @@ export default function ContractorSetup() {
                         form.category === cat ? "bg-primary text-primary-foreground" : "bg-secondary hover:bg-secondary/80"
                       }`}
                     >
-                      {cat}
+                      <span className="block">{cat}</span>
+                      {CATEGORY_DESCRIPTIONS[cat] && (
+                        <span className={`block text-xs font-normal mt-0.5 ${form.category === cat ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                          {CATEGORY_DESCRIPTIONS[cat]}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>

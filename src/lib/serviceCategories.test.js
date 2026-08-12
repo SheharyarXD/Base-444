@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SERVICE_CATEGORIES } from "./serviceCategories";
+import { SERVICE_CATEGORIES, CATEGORY_DESCRIPTIONS } from "./serviceCategories";
 
 describe("SERVICE_CATEGORIES", () => {
   it("has no duplicate entries", () => {
@@ -34,7 +34,50 @@ describe("SERVICE_CATEGORIES", () => {
     }
   });
 
-  it("has exactly 16 categories (14 legacy/Phase-1 + 2 newly added)", () => {
-    expect(SERVICE_CATEGORIES).toHaveLength(16);
+  it("includes every category from the client's second expanded-marketplace request", () => {
+    const newlyAdded = [
+      "Fencing Services",
+      "Heavy Wheel Mechanic",
+      "Garage Door Specialists",
+      "Tree Services",
+      "Appliance Repair",
+      "Small Engine Repair",
+      "Towing Service",
+      "Concrete Services",
+    ];
+    for (const cat of newlyAdded) {
+      expect(SERVICE_CATEGORIES).toContain(cat);
+    }
+  });
+
+  it("did not create separate subcategories for the examples called out in the request (18-wheelers, semi trucks, lawn mowers, etc.)", () => {
+    const shouldNotExist = ["18-Wheelers", "Semi Trucks", "Lawn Mowers", "Service Trucks"];
+    for (const notACategory of shouldNotExist) {
+      expect(SERVICE_CATEGORIES).not.toContain(notACategory);
+    }
+  });
+
+  it("has exactly 24 categories after the second expansion (16 previous + 8 newly added)", () => {
+    expect(SERVICE_CATEGORIES).toHaveLength(24);
+  });
+});
+
+describe("CATEGORY_DESCRIPTIONS", () => {
+  it("provides the client-specified help text for Heavy Wheel Mechanic", () => {
+    expect(CATEGORY_DESCRIPTIONS["Heavy Wheel Mechanic"]).toBe(
+      "18-wheelers, semi trucks, heavy-duty service trucks and other large commercial vehicles."
+    );
+  });
+
+  it("provides the client-specified help text for Small Engine Repair", () => {
+    expect(CATEGORY_DESCRIPTIONS["Small Engine Repair"]).toBe(
+      "Lawn mowers and other small-engine equipment."
+    );
+  });
+
+  it("every key is a real, valid category (no orphaned descriptions)", () => {
+    for (const key of Object.keys(CATEGORY_DESCRIPTIONS)) {
+      expect(SERVICE_CATEGORIES).toContain(key);
+    }
   });
 });

@@ -214,4 +214,35 @@ describe("acceptJob", () => {
     const res = await handler(makeReq({ bookingId: "b2" }));
     expect(res.status).toBe(403);
   });
+
+  // Second expanded-marketplace request — same "no hardcoded allowlist"
+  // guarantee applies, covered here for one representative new category.
+  it("accepts an eligible open job in the newly added 'Heavy Wheel Mechanic' category", async () => {
+    mockClient.auth.me.mockResolvedValue({ email: "c@x.com", user_type: "Contractor", full_name: "Hank Hauler" });
+    mockClient.asServiceRole.entities.Booking.get.mockResolvedValue({
+      id: "b3", status: "pending", category: "Heavy Wheel Mechanic",
+    });
+    mockClient.asServiceRole.entities.Contractor.filter.mockResolvedValue([
+      { id: "con3", category: "Heavy Wheel Mechanic" },
+    ]);
+    mockClient.asServiceRole.entities.Booking.update.mockResolvedValue({ id: "b3", status: "accepted" });
+
+    const res = await handler(makeReq({ bookingId: "b3" }));
+    expect(res.status ?? 200).toBe(200);
+    expect(mockClient.asServiceRole.entities.Booking.update).toHaveBeenCalledWith("b3", expect.objectContaining({
+      status: "accepted",
+      accepted_by_email: "c@x.com",
+    }));
+  });
+
+  it("403s a 'Towing Service' contractor attempting an open job in the newly added 'Concrete Services' category", async () => {
+    mockClient.auth.me.mockResolvedValue({ email: "c@x.com", user_type: "Contractor" });
+    mockClient.asServiceRole.entities.Booking.get.mockResolvedValue({
+      id: "b4", status: "pending", category: "Concrete Services",
+    });
+    mockClient.asServiceRole.entities.Contractor.filter.mockResolvedValue([{ id: "con4", category: "Towing Service" }]);
+
+    const res = await handler(makeReq({ bookingId: "b4" }));
+    expect(res.status).toBe(403);
+  });
 });

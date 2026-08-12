@@ -29,7 +29,15 @@
         "Lawn Care",
         "Other",
         "Contractors",
-        "Pressure Washing Services"
+        "Pressure Washing Services",
+        "Fencing Services",
+        "Heavy Wheel Mechanic",
+        "Garage Door Specialists",
+        "Tree Services",
+        "Appliance Repair",
+        "Small Engine Repair",
+        "Towing Service",
+        "Concrete Services"
       ]
     },
     "description": {

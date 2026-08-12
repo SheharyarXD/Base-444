@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Wrench, Zap, Sparkles, Paintbrush, TreePine, Wind, Hammer, Home, Package, Truck, Car, SprayCan, Building2, Droplets } from "lucide-react";
+import { Wrench, Zap, Sparkles, Paintbrush, TreePine, Wind, Hammer, Home, Package, Truck, Car, SprayCan, Building2, Droplets, Fence, Container, DoorOpen, TreeDeciduous, Refrigerator, Cog, Construction } from "lucide-react";
 
 const categoryIcons = {
   "Plumbing": Wrench,
@@ -18,6 +18,14 @@ const categoryIcons = {
   "Other": Package,
   "Contractors": Building2,
   "Pressure Washing Services": Droplets,
+  "Fencing Services": Fence,
+  "Heavy Wheel Mechanic": Container,
+  "Garage Door Specialists": DoorOpen,
+  "Tree Services": TreeDeciduous,
+  "Appliance Repair": Refrigerator,
+  "Small Engine Repair": Cog,
+  "Towing Service": Truck,
+  "Concrete Services": Construction,
 };
 
 const categoryColors = {
@@ -37,6 +45,14 @@ const categoryColors = {
   "Other": "bg-gray-50 text-gray-600",
   "Contractors": "bg-sky-50 text-sky-600",
   "Pressure Washing Services": "bg-violet-50 text-violet-600",
+  "Fencing Services": "bg-stone-50 text-stone-600",
+  "Heavy Wheel Mechanic": "bg-zinc-50 text-zinc-600",
+  "Garage Door Specialists": "bg-fuchsia-50 text-fuchsia-600",
+  "Tree Services": "bg-green-100 text-green-700",
+  "Appliance Repair": "bg-blue-100 text-blue-700",
+  "Small Engine Repair": "bg-orange-100 text-orange-700",
+  "Towing Service": "bg-yellow-50 text-yellow-700",
+  "Concrete Services": "bg-neutral-50 text-neutral-600",
 };
 
 export default function CategoryCard({ category }) {
