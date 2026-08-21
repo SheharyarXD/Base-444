@@ -5,7 +5,13 @@ import { base44 } from "@/api/base44Client";
 import { motion } from "framer-motion";
 
 const features = [
-  { icon: Shield, title: "Verified Pros", desc: "Background-checked and insured contractors" },
+  // "Background-checked and insured" was removed — neither exists anywhere
+  // in the platform (no background-check integration, no insurance
+  // verification field or workflow). What's real: license, business name,
+  // and EIN/LLC submissions reviewed and reflected as a Verified badge on a
+  // provider's profile. Copy corrected to match, per the Phase 2
+  // verification audit's rule against implying a check that doesn't exist.
+  { icon: Shield, title: "Verified Pros", desc: "License & business info reviewed before a badge is earned" },
   { icon: Clock, title: "Fast Response", desc: "Get matched within minutes, not days" },
   { icon: Star, title: "Quality Guaranteed", desc: "Rated and reviewed by real customers" },
   { icon: Zap, title: "Linked Booking", desc: "Book online, no phone calls needed" },

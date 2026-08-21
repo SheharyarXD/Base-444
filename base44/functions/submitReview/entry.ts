@@ -41,6 +41,14 @@ Deno.serve(async (req) => {
     if (booking.status !== 'completed') {
       return Response.json({ error: 'You can only review a completed booking.' }, { status: 403 });
     }
+    // A provider can only reach this line as "the customer" on their own
+    // booking if they booked their own listing directly and then accepted
+    // it themselves — nothing upstream (BookContractor.jsx, acceptJob)
+    // currently stops that combination, so this is the one place that must
+    // refuse to let it produce a self-review.
+    if (booking.accepted_by_email && booking.accepted_by_email === user.email) {
+      return Response.json({ error: 'You cannot review your own job.' }, { status: 403 });
+    }
 
     const existing = await base44.asServiceRole.entities.Review.filter({ booking_id: bookingId });
     if (existing.length > 0) {

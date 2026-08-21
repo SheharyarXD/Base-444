@@ -81,6 +81,20 @@ describe("submitReview", () => {
     expect(res.status).toBe(403);
   });
 
+  // Regression test for a gap found during the Phase 2 verification pass:
+  // nothing upstream stops a provider from booking their own listing
+  // directly and accepting it, so this is the one place that must refuse to
+  // let that combination produce a self-review.
+  it("403s a provider attempting to review their own completed job (self-booked and self-accepted)", async () => {
+    mockClient.auth.me.mockResolvedValue({ email: "pro@x.com" });
+    mockClient.asServiceRole.entities.Booking.get.mockResolvedValue({
+      id: "b1", customer_email: "pro@x.com", accepted_by_email: "pro@x.com", status: "completed", contractor_id: "con1",
+    });
+    const res = await handler(makeReq({ bookingId: "b1", rating: 5 }));
+    expect(res.status).toBe(403);
+    expect(mockClient.asServiceRole.entities.Review.create).not.toHaveBeenCalled();
+  });
+
   // Regression test for the confirmed Phase 0 bug: no path anywhere enforced
   // one review per booking.
   it("409s a second review attempt for the same booking", async () => {
