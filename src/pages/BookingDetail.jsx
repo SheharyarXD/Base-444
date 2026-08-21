@@ -694,32 +694,23 @@ export default function BookingDetail() {
         {/* Actions */}
         <div className="flex gap-3 flex-col">
           {booking.status === "completed" && isCustomer && (
-            <>
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => setReviewFormOpen(true)}
-                  className="flex-1 rounded-2xl h-12 min-h-[44px] font-heading font-bold"
-                >
-                  Leave a Review
-                </Button>
-                <Button
-                  onClick={downloadPDF}
-                  disabled={downloadingPDF}
-                  variant="outline"
-                  className="rounded-2xl h-12 min-h-[44px] font-heading font-bold gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  {downloadingPDF ? 'Generating...' : 'Summary'}
-                </Button>
-              </div>
+            <div className="flex gap-3">
               <Button
-                onClick={deleteBooking}
-                variant="outline"
-                className="w-full rounded-2xl h-12 min-h-[44px] font-heading font-bold text-destructive border-destructive/30 hover:bg-destructive/5"
+                onClick={() => setReviewFormOpen(true)}
+                className="flex-1 rounded-2xl h-12 min-h-[44px] font-heading font-bold"
               >
-                Delete Booking
+                Leave a Review
               </Button>
-            </>
+              <Button
+                onClick={downloadPDF}
+                disabled={downloadingPDF}
+                variant="outline"
+                className="rounded-2xl h-12 min-h-[44px] font-heading font-bold gap-2"
+              >
+                <Download className="w-4 h-4" />
+                {downloadingPDF ? 'Generating...' : 'Summary'}
+              </Button>
+            </div>
           )}
           {booking.status === "completed" && !isCustomer && (
             <Button

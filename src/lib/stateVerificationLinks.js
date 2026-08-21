@@ -12,10 +12,13 @@
 // notice and this repo has no way to continuously re-verify 100 such links;
 // a homepage is far more stable and a contractor can navigate from it in
 // one or two clicks. Spot-checked against live search results for a sample
-// of states (CA, TX) while building this file — all entries should still be
-// periodically reviewed, the same documented-limitation approach already
-// used in verification/providers.js for the same class of "can't be fully
-// verified from inside this repo" concern.
+// of 8 states (FL, TX, VA, NY, IL, CA, PA, WA) during the Phase 2
+// verification pass — all 8 confirmed accurate, and the PA licenseBoardUrl
+// path was corrected after that check found the stored path had gone stale.
+// The remaining states have not been individually re-verified this pass and
+// should be periodically spot-checked, the same documented-limitation
+// approach already used in verification/providers.js for the same class of
+// "can't be fully verified from inside this repo" concern.
 //
 // `licenseBoardUrl` is the state's general contractor/professional
 // licensing or regulation department. A number of states don't operate a
@@ -62,7 +65,7 @@ export const STATE_VERIFICATION_LINKS = {
   OH: { name: "Ohio", businessEntitySearchUrl: "https://businesssearch.ohiosos.gov/", licenseBoardUrl: "https://com.ohio.gov/divisions-and-programs/industrial-compliance/construction-industry-licensing", licenseBoardLabel: "Ohio Construction Industry Licensing Board (OCILB)" },
   OK: { name: "Oklahoma", businessEntitySearchUrl: "https://www.sos.ok.gov/corp/corpInquiryFind.aspx", licenseBoardUrl: "https://cib.ok.gov/", licenseBoardLabel: "Oklahoma Construction Industries Board" },
   OR: { name: "Oregon", businessEntitySearchUrl: "https://sos.oregon.gov/business/Pages/find.aspx", licenseBoardUrl: "https://www.oregon.gov/ccb/", licenseBoardLabel: "Oregon Construction Contractors Board (CCB)" },
-  PA: { name: "Pennsylvania", businessEntitySearchUrl: "https://file.dos.pa.gov/search/business", licenseBoardUrl: "https://www.attorneygeneral.gov/protect-yourself/home-improvement-contractor-registration/", licenseBoardLabel: "PA Home Improvement Contractor (HIC) Registration" },
+  PA: { name: "Pennsylvania", businessEntitySearchUrl: "https://file.dos.pa.gov/search/business", licenseBoardUrl: "https://www.attorneygeneral.gov/resources/home-improvement-contractor-registration/", licenseBoardLabel: "PA Home Improvement Contractor (HIC) Registration" },
   RI: { name: "Rhode Island", businessEntitySearchUrl: "https://ori.sos.ri.gov/Business/Search", licenseBoardUrl: "https://crb.ri.gov/", licenseBoardLabel: "Rhode Island Contractors' Registration Board" },
   SC: { name: "South Carolina", businessEntitySearchUrl: "https://businessfilings.sc.gov/BusinessFiling/Entity/Search", licenseBoardUrl: "https://llr.sc.gov/con/", licenseBoardLabel: "SC Licensing Board for Contractors" },
   SD: { name: "South Dakota", businessEntitySearchUrl: "https://sosenterprise.sd.gov/BusinessServices/Business/FilingSearch.aspx", licenseBoardUrl: "https://dlr.sd.gov/bdc/", licenseBoardLabel: "SD Board of Technical Professions / local licensing" },
