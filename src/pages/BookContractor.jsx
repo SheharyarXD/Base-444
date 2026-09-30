@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Calendar, MapPin, FileText, User, ImagePlus, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,8 @@ export default function BookContractor() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  // Stable across retries so a resubmission cannot create two bookings.
+  const idempotencyKeyRef = useRef(null);
   const [timeDrawerOpen, setTimeDrawerOpen] = useState(false);
 
   const [uploadedImages, setUploadedImages] = useState([]);
@@ -90,28 +92,45 @@ export default function BookContractor() {
         toast.error("We couldn't locate that address on the map — you can still send the request.");
       }
 
-      const usePriorityBoost = !!user?.pending_priority_boost;
+      // Same gated path as the open-job form: a direct booking is still a
+      // job post and costs the same credit. Creating the record here
+      // directly would sidestep the entitlement check entirely. The priority
+      // add-on is applied server-side there too.
+      const key = idempotencyKeyRef.current || crypto.randomUUID();
+      idempotencyKeyRef.current = key;
 
-      await base44.entities.Booking.create({
-        ...form,
-        contractor_id: contractor.id,
-        contractor_name: contractor.name,
-        contractor_category: contractor.category,
-        category: contractor.category,
-        status: "pending",
-        ...(coords ? { job_lat: coords.lat, job_lng: coords.lng } : {}),
-        ...(usePriorityBoost ? { is_priority: true } : {}),
+      const res = await base44.functions.invoke("createJobPost", {
+        idempotencyKey: key,
+        job: {
+          ...form,
+          contractor_id: contractor.id,
+          contractor_name: contractor.name,
+          contractor_category: contractor.category,
+          category: contractor.category,
+          ...(coords ? { job_lat: coords.lat, job_lng: coords.lng } : {}),
+        },
       });
 
-      if (usePriorityBoost) {
-        await base44.auth.updateMe({ pending_priority_boost: false }).catch(() => {});
+      if (res?.data?.error) {
+        if (res.data.code === "no_entitlement") {
+          toast.error("You need a post credit to send this request.");
+          navigate("/plans?need=post");
+          return;
+        }
+        toast.error(res.data.error);
+        return;
       }
 
       toast.success("Booking request sent!");
       navigate("/bookings");
     } catch (err) {
       console.error('Error creating booking:', err);
-      toast.error("Failed to send booking request. Please try again.");
+      if (err?.response?.data?.code === "no_entitlement") {
+        toast.error("You need a post credit to send this request.");
+        navigate("/plans?need=post");
+        return;
+      }
+      toast.error(err?.response?.data?.error || "Failed to send booking request. Please try again.");
     } finally {
       setSubmitting(false);
     }

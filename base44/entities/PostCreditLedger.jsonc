@@ -1,0 +1,54 @@
+{
+  "name": "PostCreditLedger",
+  "type": "object",
+  "description": "Append-only record of every post-credit movement for a customer. Balance is the sum of `delta` across a customer's entries — it is never stored as a single mutable number, for two reasons: a stored balance can be lost to a concurrent update, and a ledger gives the customer a real purchase history (which the account screen shows) as a side effect of being correct. Credits are deliberately NOT held on the user account record: that record has no access rules of its own and the platform's profile-update method can write to it, so a balance kept there could be granted by the customer to themselves. Writes here are admin-only, meaning only the purchase-confirmation and job-posting functions can move credits.",
+  "properties": {
+    "customer_email": {
+      "type": "string",
+      "title": "Customer Email",
+      "description": "Owning customer. Read access is keyed on this rather than created_by, because these rows are written by backend functions under the service role. Mirrors the pattern used by Reminder and ContractorVerification."
+    },
+    "delta": {
+      "type": "number",
+      "title": "Credit Change",
+      "description": "Positive when credits are granted by a confirmed purchase, negative when one is spent posting a job. Always the authoritative product grant, never a client-supplied quantity."
+    },
+    "reason": {
+      "type": "string",
+      "title": "Reason",
+      "enum": ["purchase", "post", "adjustment"],
+      "description": "'purchase' grants, 'post' spends, 'adjustment' is a manual administrator correction."
+    },
+    "ref": {
+      "type": "string",
+      "title": "Idempotency Reference",
+      "description": "What caused this movement, and the guard against double-counting: the purchase token for a grant, or the posting idempotency key for a spend. A movement is only written after confirming no entry with the same ref exists, so a retried confirmation or a double-submitted post cannot move credits twice."
+    },
+    "product_id": {
+      "type": "string",
+      "title": "Product ID",
+      "description": "Which product was bought, for the purchase history. Blank for spends."
+    },
+    "booking_id": {
+      "type": "string",
+      "title": "Booking ID",
+      "description": "The job this credit was spent on. Blank for grants."
+    },
+    "note": {
+      "type": "string",
+      "title": "Note"
+    }
+  },
+  "required": ["customer_email", "delta", "reason", "ref"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "data.customer_email": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

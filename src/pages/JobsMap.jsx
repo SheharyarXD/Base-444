@@ -9,8 +9,8 @@ import { MapPin, Navigation, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import JobDetailsModal from "../components/JobDetailsModal";
 import ReminderBanner, { useActiveReminders } from "../components/ReminderBanner";
-import { haversineMiles, geocodeAddress } from "@/lib/geo";
-import { isProviderEligibleForJob, filterJobsForViewer } from "@/lib/matching";
+import { haversineMiles } from "@/lib/geo";
+import { isProviderEligibleForJob } from "@/lib/matching";
 
 // _getIconUrl is a real internal property Leaflet's bundler-icon-path
 // workaround needs, just not part of its public (and thus typed) API surface.
@@ -22,14 +22,24 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-const createJobIcon = (customerType) => {
+// `isPriority` reflects the paid Priority Booking add-on. Customers pay for
+// their job to stand out to providers, and until now nothing anywhere read
+// the flag the purchase writes — the add-on had no effect at all. A larger
+// marker with a gold ring is the whole of that delivery: providers see the
+// job first because it is visually dominant, not because of a hidden ranking
+// that a map has no way to express.
+const createJobIcon = (customerType, isPriority = false) => {
   const bg = customerType === "Realtor" ? "#dc2626" : customerType === "Business Owner" ? "#2563eb" : "#ea580c";
   const label = customerType === "Realtor" ? "R" : customerType === "Business Owner" ? "B" : "H";
+  const size = isPriority ? 40 : 32;
+  const ring = isPriority
+    ? "border:3px solid #f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,0.35),0 2px 6px rgba(0,0,0,0.3)"
+    : "border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.25)";
   return new L.DivIcon({
-    html: `<div style="background:${bg};color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.25)">${label}</div>`,
+    html: `<div style="background:${bg};color:#fff;border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-size:${isPriority ? 15 : 13}px;font-weight:700;${ring}">${label}</div>`,
     className: "",
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 };
 
@@ -47,10 +57,8 @@ const DISTANCE_TABS = [
   { label: "All", miles: null },
 ];
 
-// Providers only ever see jobs in their own category (open jobs) or jobs
-// directly booked for them (direct bookings). Customers/other viewers see
-// every pending job, same as before this change.
-const JOBS_FETCH_LIMIT = 50;
+// Eligibility and the result limit now live in the getOpenJobs function,
+// which is the enforcement point for what a provider may see.
 
 function FlyTo({ center }) {
   const map = useMap();
@@ -123,40 +131,37 @@ export default function JobsMap() {
     setZipLoading(false);
   }
 
-  // Resolves lat/lng for a job, preferring the cached job_lat/job_lng
-  // written at creation time (see PostJob.jsx / BookContractor.jsx) so we
-  // don't re-hit Nominatim for every job on every page view. Only legacy
-  // bookings created before this change need the on-the-fly fallback.
-  async function resolveJobCoords(job) {
-    if (Number.isFinite(job.job_lat) && Number.isFinite(job.job_lng)) {
-      return { lat: job.job_lat, lng: job.job_lng };
-    }
-    return geocodeAddress(job.address);
-  }
 
-  async function loadPendingJobs(viewerContractor) {
+
+  // Open jobs come from the getOpenJobs function rather than a direct query.
+  // Reading Booking directly used to work because the access policy granted
+  // every signed-in user read access to any job while it was pending — which
+  // also handed out the customer's phone, email and exact street address.
+  // That clause is gone; this function returns only what a provider needs to
+  // decide, with approximate coordinates, and applies eligibility server-side.
+  async function loadPendingJobs() {
     setLoading(true);
-    const categoryFilter = viewerContractor?.category;
-    const filter = categoryFilter ? { status: "pending", category: categoryFilter } : { status: "pending" };
-    const rawJobs = await base44.entities.Booking.filter(filter, "-created_date", JOBS_FETCH_LIMIT);
-    // The category filter above also matches direct bookings targeted at a
-    // *different* contractor who happens to share the same category (direct
-    // bookings are stamped with category = target contractor's category, see
-    // BookContractor.jsx). Drop those here so a provider never sees another
-    // provider's direct-booking job (customer PII, photos, address).
-    const jobs = filterJobsForViewer(rawJobs, viewerContractor);
-    const results = [];
-    for (const job of jobs) {
-      const coords = await resolveJobCoords(job);
-      if (coords) results.push({ ...job, lat: coords.lat, lng: coords.lng });
-      // Only the legacy (uncached) path actually hits the network, so this
-      // delay only slows things down for old records without job_lat/job_lng.
-      if (!Number.isFinite(job.job_lat)) {
-        await new Promise((r) => setTimeout(r, 1200));
+    try {
+      const res = await base44.functions.invoke("getOpenJobs", {});
+      if (res.data?.profileIncomplete) {
+        setProfileIncompleteForJobs(true);
+        setGeocoded([]);
+        return;
       }
+      // Jobs arrive with approximate coordinates already attached. Anything
+      // without usable coordinates simply cannot be placed on a map — there is
+      // no address to fall back on any more, and that is intentional.
+      const results = (res.data?.jobs || [])
+        .filter((job) => Number.isFinite(job.job_lat) && Number.isFinite(job.job_lng))
+        .map((job) => ({ ...job, lat: job.job_lat, lng: job.job_lng }));
+      setGeocoded(results);
+    } catch (err) {
+      console.error("Failed to load open jobs:", err);
+      toast.error("Couldn't load nearby jobs. Pull to retry.");
+      setGeocoded([]);
+    } finally {
+      setLoading(false);
     }
-    setGeocoded(results);
-    setLoading(false);
   }
 
   // Load user and bookings only once on mount
@@ -190,7 +195,9 @@ export default function JobsMap() {
           return;
         }
       }
-      await loadPendingJobs(myContractor);
+      // getOpenJobs derives the provider's category and eligibility server-side
+      // from the caller's own identity, so nothing needs passing in.
+      await loadPendingJobs();
     }).catch(() => { loadPendingJobs(); });
 
     navigator.geolocation?.getCurrentPosition(
@@ -204,28 +211,45 @@ export default function JobsMap() {
     );
 
     const unsubscribe = base44.entities.Booking.subscribe(async (event) => {
-      if (event.type !== "create" || event.data?.status !== "pending") return;
-      toast.info(`🆕 New job: ${event.data.job_title}`, { duration: 5000 });
-
-      // Keep the map itself live too, not just the toast — but only add it
-      // if it's actually relevant to this viewer (matches provider category
-      // / direct-booking target, or viewer isn't a provider at all).
-      setContractor((currentContractor) => {
-        const relevant =
-          !currentContractor || isProviderEligibleForJob(currentContractor, event.data) || !event.data.contractor_id;
-        if (relevant) {
-          resolveJobCoords(event.data).then((coords) => {
-            if (coords) {
-              setGeocoded((prev) =>
-                prev.some((j) => j.id === event.data.id)
-                  ? prev
-                  : [{ ...event.data, lat: coords.lat, lng: coords.lng }, ...prev]
-              );
-            }
-          });
+      // A job that stops being pending (someone else accepted it, or the
+      // customer cancelled it) must leave the map for EVERY viewer, not just
+      // the provider who accepted it. Previously only the accepting client
+      // removed the marker locally, so every other provider kept seeing —
+      // and could keep trying to accept — a job that was already taken.
+      if (event.type === "update") {
+        if (event.data?.status && event.data.status !== "pending") {
+          setGeocoded((prev) => prev.filter((j) => j.id !== event.id));
         }
-        return currentContractor;
-      });
+        return;
+      }
+      if (event.type === "delete") {
+        setGeocoded((prev) => prev.filter((j) => j.id !== event.id));
+        return;
+      }
+      if (event.type !== "create" || event.data?.status !== "pending") return;
+
+      // The event payload is the raw booking record, including the customer's
+      // contact details and exact address. It is never put on the map
+      // directly — the new job is re-fetched through getOpenJobs, which
+      // applies the same redaction and eligibility check as the initial load.
+      // Anything the caller is not entitled to see simply comes back refused,
+      // and nothing is added.
+      base44.functions
+        .invoke("getOpenJobs", { bookingId: event.id })
+        .then((res) => {
+          const job = res?.data?.job;
+          if (!job || !Number.isFinite(job.job_lat) || !Number.isFinite(job.job_lng)) return;
+          toast.info(`🆕 New job: ${job.job_title}`, { duration: 5000 });
+          setGeocoded((prev) =>
+            prev.some((j) => j.id === job.id)
+              ? prev
+              : [{ ...job, lat: job.job_lat, lng: job.job_lng }, ...prev]
+          );
+        })
+        .catch(() => {
+          // Not eligible, or the job was taken between the event and the
+          // fetch. Either way there is nothing to show.
+        });
     });
 
     return unsubscribe;
@@ -420,17 +444,21 @@ export default function JobsMap() {
             </>
           )}
 
-          {filtered.map((job) => {
-            if (!Number.isFinite(job.lat) || !Number.isFinite(job.lng)) return null;
-            return (
-              <Marker
-                key={job.id}
-                position={[job.lat, job.lng]}
-                icon={createJobIcon(job.customer_type)}
-                eventHandlers={{ click: () => handleJobClick(job) }}
-              />
-            );
-          })}
+          {/* Priority jobs render last so their marker sits above overlapping
+              standard markers rather than behind them. */}
+          {[...filtered]
+            .sort((a, b) => Number(!!a.is_priority) - Number(!!b.is_priority))
+            .map((job) => {
+              if (!Number.isFinite(job.lat) || !Number.isFinite(job.lng)) return null;
+              return (
+                <Marker
+                  key={job.id}
+                  position={[job.lat, job.lng]}
+                  icon={createJobIcon(job.customer_type, job.is_priority)}
+                  eventHandlers={{ click: () => handleJobClick(job) }}
+                />
+              );
+            })}
         </MapContainer>
       </div>
       <JobDetailsModal

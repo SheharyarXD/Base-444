@@ -23,12 +23,26 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // "I've Arrived"/"Mark as Completed" actions, and both are legitimate: a
 // contractor self-reporting and a customer confirming are both real-world
 // completion signals, not a bug to pick one side for.
+//
+// Phase 3 adds 'arriving' between on_the_way and arrival. It is
+// contractor-only for the same reason on_the_way is: only the provider knows
+// they're actually close. It is deliberately OPTIONAL — on_the_way still
+// transitions straight to in_progress/completed, so a provider who never
+// presses "Almost there" (or whose geofence never fires because location
+// permission was denied) is not stuck. 'arriving' offers the same onward
+// transitions as on_the_way for exactly that reason.
 const TRANSITIONS = {
   pending: { cancelled: 'customer' },
   accepted: { on_the_way: 'contractor', cancelled: 'either' },
-  on_the_way: { in_progress: 'either', completed: 'either', cancelled: 'either' },
+  on_the_way: { arriving: 'contractor', in_progress: 'either', completed: 'either', cancelled: 'either' },
+  arriving: { in_progress: 'either', completed: 'either', cancelled: 'either' },
   in_progress: { completed: 'either', cancelled: 'either' },
 };
+
+// Statuses after which no further location may be collected or shown. Phase 3
+// §9/§22: tracking must not outlive the journey, and the app must not sit on
+// GPS coordinates for jobs that are over.
+const TRACKING_TERMINAL_STATUSES = ['completed', 'cancelled'];
 
 Deno.serve(async (req) => {
   try {
@@ -72,7 +86,22 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'You are not authorized to make this change.' }, { status: 403 });
     }
 
-    const updated = await base44.asServiceRole.entities.Booking.update(bookingId, { status });
+    // Reaching a terminal state clears the last known provider position in
+    // the SAME write that ends the job, so there is no window in which a
+    // finished booking still carries live coordinates. updateProviderLocation
+    // independently refuses to write to a non-tracked status, so nothing can
+    // repopulate these afterwards.
+    const statusPatch = TRACKING_TERMINAL_STATUSES.includes(status)
+      ? {
+          status,
+          contractor_lat: null,
+          contractor_lng: null,
+          contractor_location_updated_at: null,
+          contractor_location_accuracy_m: null,
+        }
+      : { status };
+
+    const updated = await base44.asServiceRole.entities.Booking.update(bookingId, statusPatch);
 
     if (status === 'completed') {
       // Contractor.completed_jobs was never incremented anywhere in the

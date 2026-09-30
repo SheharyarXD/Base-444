@@ -32,3 +32,16 @@ dist-ssr
 
 # Generated preview/deliverable documents — share these directly, don't commit them
 *.pdf
+
+# Reference copy of the previously-working app, dropped in locally for
+# comparison. Never commit it — it is a whole second checkout (its own .git
+# and dist included) and not part of this project.
+Linked-main*/
+
+# Exported transcript of the earlier Claude sessions, kept locally for
+# reference. Not project source — never commit it (it can also contain tokens).
+claude-chat-export/
+
+# Phase 3 delivery screenshots, generated locally via the temporary mock
+# harness. Regenerate rather than commit.
+phase3-screenshots/

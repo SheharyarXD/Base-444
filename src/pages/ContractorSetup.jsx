@@ -49,10 +49,19 @@ export default function ContractorSetup() {
           description: c.description || "",
           years_experience: c.years_experience || "",
         });
+        // Licence number and EIN come from the restricted
+        // ContractorVerification record, not the public provider profile.
+        let priv = {};
+        try {
+          const rows = await base44.entities.ContractorVerification.filter({ contractor_email: me.email });
+          priv = rows[0] || {};
+        } catch {
+          // Non-fatal — the provider can simply re-enter them.
+        }
         setVerificationForm({
-          license_number: c.license_number || "",
+          license_number: priv.license_number || "",
           business_name: c.business_name || "",
-          ein_number: c.ein_number || "",
+          ein_number: priv.ein_number || "",
         });
       }
       setLoading(false);

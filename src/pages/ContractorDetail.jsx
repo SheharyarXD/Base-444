@@ -10,16 +10,6 @@ import { motion } from "framer-motion";
 import moment from "moment";
 import { getStateVerificationLinks } from "@/lib/stateVerificationLinks";
 
-// Public profile page — a license number shouldn't be fully exposed to any
-// authenticated marketplace visitor. Shows just enough to be recognizable
-// as "the number on file" without exposing it in full.
-function maskLicenseNumber(value) {
-  if (!value) return "";
-  const trimmed = value.trim();
-  if (trimmed.length <= 4) return "•".repeat(trimmed.length);
-  return `${trimmed.slice(0, 2)}${"•".repeat(trimmed.length - 4)}${trimmed.slice(-2)}`;
-}
-
 export default function ContractorDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -173,6 +163,22 @@ export default function ContractorDetail() {
                     Pro
                   </span>
                 )}
+                {/* The paid Featured Listing add-on writes `featured_until`
+                    (now + 7 days). Nothing read it before, so the purchase had
+                    no visible effect whatsoever. This badge is that delivery,
+                    and it disappears on its own once the window lapses — no
+                    cleanup job needed. Deliberately worded as a paid placement
+                    so it is never mistaken for the license Verified badge. */}
+                {contractor.featured_until &&
+                  new Date(contractor.featured_until).getTime() > Date.now() && (
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-full px-2.5 py-1"
+                    title="Purchased Featured listing — a paid promotion, not a verification"
+                  >
+                    <Star className="w-3 h-3" />
+                    Featured
+                  </span>
+                )}
                 {contractor.state && (
                   <a
                     href={getStateVerificationLinks(contractor.state)?.licenseBoardUrl}
@@ -222,7 +228,15 @@ export default function ContractorDetail() {
               rejected number carries no confirmed meaning and showing it
               publicly could be misread as an endorsement), and even then
               only masked — this is a public profile page. */}
-          {(contractor.business_name || (contractor.verification_status === "verified" && contractor.license_number)) && (
+          {/* The licence number itself is no longer available here, and that is
+              deliberate: it lived on the publicly readable provider profile,
+              where anyone signed in could read it in full regardless of the
+              masking applied below. It now lives in a restricted record that
+              only the provider and an admin can read. What a customer actually
+              needs is the assurance that a licence was checked and which state
+              issued it — both of which are still shown, without publishing a
+              regulated credential to the whole user base. */}
+          {(contractor.business_name || contractor.verification_status === "verified") && (
             <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground mb-6 bg-secondary/30 rounded-xl p-3">
               {contractor.business_name && (
                 <span className="flex items-center gap-1.5">
@@ -230,10 +244,10 @@ export default function ContractorDetail() {
                   {contractor.business_name}
                 </span>
               )}
-              {contractor.verification_status === "verified" && contractor.license_number && (
+              {contractor.verification_status === "verified" && (
                 <span className="flex items-center gap-1.5">
                   <BadgeCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  License {maskLicenseNumber(contractor.license_number)} ({contractor.state})
+                  License verified{contractor.state ? ` (${contractor.state})` : ""}
                 </span>
               )}
             </div>

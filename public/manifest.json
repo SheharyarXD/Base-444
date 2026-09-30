@@ -1,0 +1,17 @@
+{
+  "name": "Linked",
+  "short_name": "Linked",
+  "description": "Find and book local service providers, and follow your job from accepted to complete.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1f242e",
+  "theme_color": "#e08d52",
+  "categories": [
+    "business",
+    "productivity",
+    "lifestyle"
+  ],
+  "icons": []
+}

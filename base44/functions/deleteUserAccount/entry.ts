@@ -16,13 +16,20 @@ Deno.serve(async (req) => {
     }
 
     // Get all user data to delete
-    const [bookings, reviews, sentMessages, receivedMessages, contractors, reminders] = await Promise.all([
+    const [bookings, reviews, sentMessages, receivedMessages, contractors, reminders, acceptedBookings] = await Promise.all([
       base44.asServiceRole.entities.Booking.filter({ created_by: user.email }),
       base44.asServiceRole.entities.Review.filter({ created_by: user.email }),
       base44.asServiceRole.entities.Message.filter({ sender_email: user.email }),
       base44.asServiceRole.entities.Message.filter({ recipient_email: user.email }),
       base44.asServiceRole.entities.Contractor.filter({ created_by: user.email }),
       base44.asServiceRole.entities.Reminder.filter({ recipient_email: user.email }),
+      // Jobs this user ACCEPTED as a provider. These belong to the customer,
+      // not to this user, so they must not be deleted — but Phase 3 stores
+      // the provider's GPS coordinates on the customer's booking row, so
+      // filtering only by created_by left a deleted provider's last known
+      // position behind on someone else's record. That directly contradicted
+      // the "all associated data deleted" message this function returns.
+      base44.asServiceRole.entities.Booking.filter({ accepted_by_email: user.email }),
     ]);
     // A booking's chat can have messages from both sides — dedupe in case a
     // message satisfies both filters (shouldn't normally happen since
@@ -36,6 +43,22 @@ Deno.serve(async (req) => {
       ...[...messageIds].map(id => base44.asServiceRole.entities.Message.delete(id)),
       ...contractors.map(c => base44.asServiceRole.entities.Contractor.delete(c.id)),
       ...reminders.map(r => base44.asServiceRole.entities.Reminder.delete(r.id)),
+      // Scrub, don't delete: the customer keeps their booking and its history,
+      // but nothing of the departed provider's location survives on it.
+      // NOTE (product decision, deliberately not invented here): what should
+      // happen to a still-active job whose provider deletes their account —
+      // auto-cancel, return to pending, or notify the customer — is not
+      // specified anywhere in the current requirements. Flagged in the Phase 3
+      // report rather than guessed at; this change is limited to the location
+      // data, which is unambiguously covered by the deletion promise.
+      ...acceptedBookings
+        .filter(b => b.created_by !== user.email)
+        .map(b => base44.asServiceRole.entities.Booking.update(b.id, {
+          contractor_lat: null,
+          contractor_lng: null,
+          contractor_location_updated_at: null,
+          contractor_location_accuracy_m: null,
+        })),
     ];
 
     if (deletePromises.length > 0) {

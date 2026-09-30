@@ -1,0 +1,45 @@
+{
+  "name": "CustomerSubscription",
+  "type": "object",
+  "description": "A customer's posting subscription. Held separately from the user account record for the same reason as the credit ledger: that record has no access rules of its own and the platform's profile-update method can write to it, so a subscription status kept there could be forged by the customer. Writes here are admin-only, so only the purchase-confirmation and cancellation functions can change entitlement. The pre-existing provider plans on the user record are untouched and keep working.",
+  "properties": {
+    "customer_email": { "type": "string", "title": "Customer Email" },
+    "plan_id": {
+      "type": "string",
+      "title": "Plan ID",
+      "enum": ["customer_monthly", "customer_annual"]
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": ["active", "cancelled", "expired", "payment_failed"],
+      "default": "active",
+      "description": "'cancelled' keeps access until current_period_end, matching what the cancellation email tells the customer. 'expired' and 'payment_failed' grant nothing."
+    },
+    "started_at": { "type": "string", "title": "Started At", "format": "date-time" },
+    "current_period_end": {
+      "type": "string",
+      "title": "Current Period End",
+      "format": "date-time",
+      "description": "Entitlement is only granted while this is in the future, so a lapsed subscription stops granting access without needing a sweep job."
+    },
+    "cancelled_at": { "type": "string", "title": "Cancelled At", "format": "date-time" },
+    "last_purchase_ref": {
+      "type": "string",
+      "title": "Last Purchase Reference",
+      "description": "Token of the purchase that last started or renewed this subscription. Checked before applying a renewal so a duplicate confirmation cannot extend the period twice."
+    }
+  },
+  "required": ["customer_email", "plan_id", "status"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "data.customer_email": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

@@ -8,7 +8,7 @@ const mockClient = {
   auth: { me: vi.fn() },
   asServiceRole: {
     entities: {
-      Booking: { filter: vi.fn(), delete: vi.fn() },
+      Booking: { filter: vi.fn(), delete: vi.fn(), update: vi.fn() },
       Review: { filter: vi.fn(), delete: vi.fn() },
       Message: { filter: vi.fn(), delete: vi.fn() },
       Contractor: { filter: vi.fn(), delete: vi.fn() },
@@ -20,6 +20,16 @@ const mockClient = {
 
 function makeReq() {
   return { json: async () => ({}) };
+}
+
+// deleteUserAccount queries Booking twice — once for jobs the user created
+// (deleted outright) and once for jobs they accepted as a provider (kept, but
+// scrubbed of their location). Route the mock by query shape so each can be
+// set independently.
+function setBookings({ created = [], accepted = [] }) {
+  mockClient.asServiceRole.entities.Booking.filter.mockImplementation(async (query) =>
+    query?.created_by ? created : accepted,
+  );
 }
 
 async function loadHandler() {
@@ -35,7 +45,7 @@ describe("deleteUserAccount", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockClient.asServiceRole.entities.Booking.filter.mockResolvedValue([]);
+    setBookings({ created: [], accepted: [] });
     mockClient.asServiceRole.entities.Review.filter.mockResolvedValue([]);
     mockClient.asServiceRole.entities.Message.filter.mockResolvedValue([]);
     mockClient.asServiceRole.entities.Contractor.filter.mockResolvedValue([]);
@@ -52,7 +62,7 @@ describe("deleteUserAccount", () => {
 
   it("deletes created bookings, own reviews, and the user row", async () => {
     mockClient.auth.me.mockResolvedValue({ id: "u1", email: "u@x.com" });
-    mockClient.asServiceRole.entities.Booking.filter.mockResolvedValue([{ id: "b1" }, { id: "b2" }]);
+    setBookings({ created: [{ id: "b1" }, { id: "b2" }] });
     mockClient.asServiceRole.entities.Review.filter.mockResolvedValue([{ id: "rev1" }]);
 
     const res = await handler(makeReq());
@@ -113,6 +123,50 @@ describe("deleteUserAccount", () => {
     await handler(makeReq());
 
     expect(mockClient.asServiceRole.entities.Message.delete).toHaveBeenCalledTimes(1);
+  });
+
+  // Phase 3: a provider's coordinates live on the CUSTOMER's booking row, so
+  // filtering only by created_by left them behind after "delete my account".
+  it("scrubs the departing provider's location from jobs they accepted", async () => {
+    mockClient.auth.me.mockResolvedValue({ id: "u1", email: "pro@x.com" });
+    setBookings({
+      created: [],
+      accepted: [{ id: "b9", created_by: "cust@x.com", contractor_lat: 40, contractor_lng: -74 }],
+    });
+
+    await handler(makeReq());
+
+    expect(mockClient.asServiceRole.entities.Booking.update).toHaveBeenCalledWith("b9", {
+      contractor_lat: null,
+      contractor_lng: null,
+      contractor_location_updated_at: null,
+      contractor_location_accuracy_m: null,
+    });
+  });
+
+  it("does NOT delete a customer's booking just because the provider left", async () => {
+    mockClient.auth.me.mockResolvedValue({ id: "u1", email: "pro@x.com" });
+    setBookings({ created: [], accepted: [{ id: "b9", created_by: "cust@x.com" }] });
+
+    await handler(makeReq());
+
+    expect(mockClient.asServiceRole.entities.Booking.delete).not.toHaveBeenCalledWith("b9");
+  });
+
+  it("does not scrub-then-delete a booking the user both created and accepted", async () => {
+    // Degenerate but possible (self-booking / seed data): the row is being
+    // deleted outright, so updating it first would be a wasted write on a
+    // record that is about to vanish.
+    mockClient.auth.me.mockResolvedValue({ id: "u1", email: "solo@x.com" });
+    setBookings({
+      created: [{ id: "b1", created_by: "solo@x.com" }],
+      accepted: [{ id: "b1", created_by: "solo@x.com" }],
+    });
+
+    await handler(makeReq());
+
+    expect(mockClient.asServiceRole.entities.Booking.delete).toHaveBeenCalledWith("b1");
+    expect(mockClient.asServiceRole.entities.Booking.update).not.toHaveBeenCalled();
   });
 
   it("returns 500 and does not throw on an unexpected error", async () => {

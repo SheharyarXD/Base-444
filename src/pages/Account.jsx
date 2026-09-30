@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Mail, LogOut, Shield, CalendarCheck, Star, Bell, Moon, Lock, Camera, Share2, Copy, Check, FileText, ChevronDown, BadgeCheck } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import moment from "moment";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -40,9 +41,18 @@ export default function Account() {
   const [copied, setCopied] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [cancellingSubscription, setCancellingSubscription] = useState(false);
+  const [entitlement, setEntitlement] = useState(null);
 
   const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
   const shareableLink = `${appUrl}?ref=${user?.id}`;
+
+  // Authoritative posts/subscription state for the billing panel.
+  useEffect(() => {
+    base44.functions
+      .invoke("getPostEntitlement", {})
+      .then((res) => setEntitlement(res?.data || null))
+      .catch(() => setEntitlement(null));
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -66,11 +76,24 @@ export default function Account() {
           const contractors = await base44.entities.Contractor.filter({ created_by: me.email });
           if (contractors.length > 0) {
             setContractor(contractors[0]);
+            // The licence number and EIN no longer live on the public provider
+            // profile — they are held in ContractorVerification, which only the
+            // owning provider and admins can read. This is a direct read
+            // because the policy already scopes it to this provider; no extra
+            // server call is needed to fetch your own details.
+            let privateDetails = {};
+            try {
+              const rows = await base44.entities.ContractorVerification.filter({ contractor_email: me.email });
+              privateDetails = rows[0] || {};
+            } catch {
+              // Never block the account page on the private record being
+              // unavailable — the rest of the form still works.
+            }
             setVerificationForm({
-              license_number: contractors[0].license_number || "",
+              license_number: privateDetails.license_number || "",
               state: contractors[0].state || "",
               business_name: contractors[0].business_name || "",
-              ein_number: contractors[0].ein_number || "",
+              ein_number: privateDetails.ein_number || "",
             });
           }
           setContactInfo({
@@ -239,7 +262,9 @@ export default function Account() {
         <div className="flex gap-1 bg-secondary rounded-2xl p-1">
           {(["Contractor", "Handyman"].includes(user?.user_type)
             ? ["profile", "contact", "share", "settings"]
-            : ["profile", "share", "settings"]
+            // Customers buy and spend posts, so billing gets its own tab
+            // rather than sitting beneath the danger zone in settings.
+            : ["profile", "billing", "share", "settings"]
           ).map(tab => (
             <button
               key={tab}
@@ -677,6 +702,88 @@ export default function Account() {
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "billing" && (
+          <div className="space-y-4">
+            {/* Posts & billing. Everything here is read from the server on
+                each visit — the balance, the subscription state and the
+                history all come from getPostEntitlement, so nothing the
+                browser holds can change what is shown or what is owed. No
+                payment details are stored by this application at any point;
+                the payment provider holds them. */}
+            <div className="bg-card rounded-2xl border border-border divide-y divide-border">
+              <div className="p-4 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Posts &amp; Billing</p>
+                <Link to="/plans" className="text-xs font-heading font-bold text-primary underline">
+                  Buy posts
+                </Link>
+              </div>
+
+              <div className="p-5 flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-semibold text-sm text-foreground">Available posts</p>
+                  <p className="text-xs text-muted-foreground">Each job post uses one</p>
+                </div>
+                <p className="font-heading font-extrabold text-2xl text-foreground tabular-nums">
+                  {entitlement ? entitlement.credits : "—"}
+                </p>
+              </div>
+
+              <div className="p-5">
+                <p className="font-semibold text-sm text-foreground mb-1">Subscription</p>
+                {!entitlement ? (
+                  <p className="text-xs text-muted-foreground">Loading…</p>
+                ) : entitlement.subscription ? (
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p>
+                      <span className="font-semibold text-foreground">
+                        {entitlement.subscription.plan_id === "customer_annual" ? "Annual" : "Monthly"}
+                      </span>{" "}
+                      — {entitlement.subscription.active ? "active" : entitlement.subscription.status}
+                    </p>
+                    {entitlement.subscription.current_period_end && (
+                      <p>
+                        {entitlement.subscription.cancelled_at ? "Access ends" : "Renews"} on{" "}
+                        {moment(entitlement.subscription.current_period_end).format("MMM D, YYYY")}
+                      </p>
+                    )}
+                    {entitlement.subscription.cancelled_at && (
+                      <p className="text-amber-700">Cancelled — you keep access until the date above.</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No subscription. You can post using credits, or subscribe from{" "}
+                    <Link to="/plans" className="underline font-semibold">Plans</Link>.
+                  </p>
+                )}
+              </div>
+
+              {entitlement?.history?.length > 0 && (
+                <div className="p-5">
+                  <p className="font-semibold text-sm text-foreground mb-3">Recent activity</p>
+                  <div className="space-y-2">
+                    {entitlement.history.slice(0, 8).map((h) => (
+                      <div key={h.id} className="flex items-center justify-between gap-3 text-xs">
+                        <div className="min-w-0">
+                          <p className="text-foreground truncate">{h.note || (h.delta > 0 ? "Posts purchased" : "Job posted")}</p>
+                          <p className="text-muted-foreground">{moment(h.created_date).format("MMM D, YYYY")}</p>
+                        </div>
+                        <span
+                          className={`font-heading font-bold tabular-nums shrink-0 ${
+                            h.delta > 0 ? "text-emerald-700" : "text-muted-foreground"
+                          }`}
+                        >
+                          {h.delta > 0 ? `+${h.delta}` : h.delta}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

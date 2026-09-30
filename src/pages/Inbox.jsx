@@ -4,6 +4,7 @@ import { MessageCircle, ChevronRight } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import moment from "moment";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 
 export default function Inbox() {
   const [threads, setThreads] = useState([]);
@@ -54,9 +55,16 @@ export default function Inbox() {
         .sort((a, b) => new Date(b.latestMessage.created_date).getTime() - new Date(a.latestMessage.created_date).getTime());
 
       setThreads(valid);
-      setLoading(false);
     }
-    load();
+    // Same gap as the realtor dashboard: load() was called with nothing
+    // catching a rejection, and setLoading(false) sat on the success path
+    // only — so any backend error left the inbox spinning indefinitely.
+    load()
+      .catch((err) => {
+        console.error("Failed to load inbox:", err);
+        toast.error("Couldn't load your messages. Check your connection and try again.");
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   return (

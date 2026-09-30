@@ -13,7 +13,12 @@ const features = [
   // verification audit's rule against implying a check that doesn't exist.
   { icon: Shield, title: "Verified Pros", desc: "License & business info reviewed before a badge is earned" },
   { icon: Clock, title: "Fast Response", desc: "Get matched within minutes, not days" },
-  { icon: Star, title: "Quality Guaranteed", desc: "Rated and reviewed by real customers" },
+  // Was "Quality Guaranteed", which directly contradicted the Terms
+  // ("Linked ... does not guarantee workmanship" / "does not guarantee
+  // quality of work"). Ratings come from customers who completed a real
+  // booking, which is a genuine signal — but it is not a guarantee, and the
+  // marketing copy must not promise one the platform disclaims elsewhere.
+  { icon: Star, title: "Rated by Real Customers", desc: "Every review comes from a completed job" },
   { icon: Zap, title: "Linked Booking", desc: "Book online, no phone calls needed" },
 ];
 
