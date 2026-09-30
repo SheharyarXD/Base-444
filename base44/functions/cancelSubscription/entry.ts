@@ -14,7 +14,26 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Legacy provider plans still live on the user record. Left in place so
+    // an existing subscriber's cancellation keeps behaving exactly as before.
     await base44.asServiceRole.entities.User.update(user.id, { plan: 'free' });
+
+    // Customer posting subscriptions live in their own record. Cancelling
+    // marks it cancelled but deliberately does NOT clear current_period_end:
+    // the email below promises access until the end of the paid period, and
+    // the entitlement check honours a cancelled subscription until that date.
+    // Wiping the date here would cut access off immediately and contradict
+    // what the customer was just told.
+    const subs = await base44.asServiceRole.entities.CustomerSubscription.filter({
+      customer_email: user.email,
+    });
+    for (const sub of subs) {
+      if (sub.status === 'cancelled') continue; // already done; stay idempotent
+      await base44.asServiceRole.entities.CustomerSubscription.update(sub.id, {
+        status: 'cancelled',
+        cancelled_at: new Date().toISOString(),
+      });
+    }
 
     // Send cancellation email notification
     await base44.asServiceRole.integrations.Core.SendEmail({

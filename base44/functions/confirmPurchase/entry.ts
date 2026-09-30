@@ -36,11 +36,121 @@ const PLANS = {
   handyman_pro: { isSubscription: true },
   featured_listing: { isSubscription: false },
   business_pro: { isSubscription: true },
+  post_single: { isSubscription: false },
+  post_bag_small: { isSubscription: false },
+  post_bag_medium: { isSubscription: false },
+  post_bag_large: { isSubscription: false },
+  customer_monthly: { isSubscription: true },
+  customer_annual: { isSubscription: true },
+};
+
+// How many credits each product grants. This is the authoritative grant —
+// the browser names a product, never a quantity, so there is no number in the
+// request that could be inflated. Mirrors POST_CREDIT_PRODUCTS in
+// src/lib/pricing.js; src/lib/pricingSync.test.js fails if they drift.
+const CREDIT_GRANTS = {
+  post_single: 1,
+  post_bag_small: 3,
+  post_bag_medium: 5,
+  post_bag_large: 8,
+};
+
+// Length of a paid subscription period. Slightly generous so a renewal that
+// lands a few hours late does not briefly revoke access.
+const SUBSCRIPTION_PERIOD_DAYS = {
+  customer_monthly: 31,
+  customer_annual: 366,
 };
 
 const FEATURED_LISTING_DAYS = 7;
 
-async function grantEntitlement(base44, user, planId) {
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Grants post credits by appending to the ledger.
+ *
+ * Idempotent on the purchase token: the token is what identifies this
+ * movement, so a replayed confirmation finds the existing entry and adds
+ * nothing. The token is already single-use at the intent level; this is a
+ * second, independent guard, because granting credits twice is the failure
+ * that costs real money.
+ */
+async function grantCredits(base44, user, productId, ref) {
+  const credits = CREDIT_GRANTS[productId];
+  if (!credits) throw new Error(`No credit grant defined for "${productId}"`);
+
+  const existing = await base44.asServiceRole.entities.PostCreditLedger.filter({ ref });
+  if (existing.length > 0) return;
+
+  await base44.asServiceRole.entities.PostCreditLedger.create({
+    customer_email: user.email,
+    delta: credits,
+    reason: 'purchase',
+    ref,
+    product_id: productId,
+    note: `Purchased ${credits} post credit${credits === 1 ? '' : 's'}`,
+  });
+}
+
+/**
+ * Starts or renews a customer subscription.
+ *
+ * Also idempotent on the purchase token: a duplicate confirmation would
+ * otherwise extend the paid period a second time for a single payment.
+ */
+async function grantSubscription(base44, user, planId, ref) {
+  const days = SUBSCRIPTION_PERIOD_DAYS[planId];
+  if (!days) throw new Error(`No subscription period defined for "${planId}"`);
+
+  const now = new Date();
+  const existing = await base44.asServiceRole.entities.CustomerSubscription.filter({
+    customer_email: user.email,
+  });
+  const current = existing[0];
+
+  if (current?.last_purchase_ref === ref) return; // already applied
+
+  // A renewal arriving before the current period ends extends from that end,
+  // so a customer never loses days they already paid for.
+  const base = current?.current_period_end && new Date(current.current_period_end) > now
+    ? new Date(current.current_period_end)
+    : now;
+  const periodEnd = new Date(base.getTime() + days * DAY_MS).toISOString();
+
+  const payload = {
+    customer_email: user.email,
+    plan_id: planId,
+    status: 'active',
+    current_period_end: periodEnd,
+    last_purchase_ref: ref,
+    // Clearing this matters: a customer who cancelled and then resubscribed
+    // would otherwise still look cancelled.
+    cancelled_at: null,
+  };
+
+  if (current) {
+    await base44.asServiceRole.entities.CustomerSubscription.update(current.id, payload);
+    // Collapse any duplicates so a later read cannot pick a stale row.
+    for (const dupe of existing.slice(1)) {
+      await base44.asServiceRole.entities.CustomerSubscription.delete(dupe.id);
+    }
+  } else {
+    await base44.asServiceRole.entities.CustomerSubscription.create({
+      ...payload,
+      started_at: now.toISOString(),
+    });
+  }
+}
+
+async function grantEntitlement(base44, user, planId, ref) {
+  if (CREDIT_GRANTS[planId]) {
+    await grantCredits(base44, user, planId, ref);
+    return;
+  }
+  if (SUBSCRIPTION_PERIOD_DAYS[planId]) {
+    await grantSubscription(base44, user, planId, ref);
+    return;
+  }
   switch (planId) {
     case 'priority_booking':
       await base44.asServiceRole.entities.User.update(user.id, { pending_priority_boost: true });
@@ -101,7 +211,7 @@ Deno.serve(async (req) => {
     // grant twice, even if grantEntitlement partially fails and this handler
     // is invoked again for the same token.
     await base44.asServiceRole.entities.PurchaseIntent.update(intent.id, { status: 'completed' });
-    await grantEntitlement(base44, user, intent.plan_id);
+    await grantEntitlement(base44, user, intent.plan_id, token);
 
     return Response.json({ success: true, plan_id: intent.plan_id });
   } catch (error) {

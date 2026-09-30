@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { Camera, X, MapPin, Calendar, Clock, ChevronDown, Plus } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Camera, X, MapPin, Calendar, Clock, ChevronDown, Plus, Check, Ticket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import DatePickerInput from "../components/DatePickerInput";
@@ -17,12 +17,21 @@ export default function PostJob() {
   const [photos, setPhotos] = useState([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Held across retries of the same submission so a repeat cannot post twice.
+  const idempotencyKeyRef = useRef(null);
+  const [entitlement, setEntitlement] = useState(null);
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [timeDrawerOpen, setTimeDrawerOpen] = useState(false);
   const timeOptions = ["Now", "Morning (8am-12pm)", "Afternoon (12pm-4pm)", "Evening (4pm-8pm)", "Flexible"];
   const [form, setForm] = useState({
     job_title: "",
-    category: "",
+    // Prefilled from ?category= the same way zip is below, but only when the
+    // value names a real category — an arbitrary string from the URL would
+    // otherwise land in the form and be submitted as a category that the
+    // Booking record's own list does not allow.
+    category: SERVICE_CATEGORIES.includes(searchParams.get("category"))
+      ? searchParams.get("category")
+      : "",
     descriptions: [],
     address: "",
     city: "",
@@ -31,6 +40,15 @@ export default function PostJob() {
     preferred_date: "",
     preferred_time: "Flexible",
   });
+
+  // Authoritative: the balance and subscription state come from the server,
+  // never from anything held in the browser.
+  useEffect(() => {
+    base44.functions
+      .invoke("getPostEntitlement", {})
+      .then((res) => setEntitlement(res?.data || null))
+      .catch(() => setEntitlement(null));
+  }, []);
 
   useEffect(() => {
     base44.auth.me().then((me) => {
@@ -100,29 +118,47 @@ export default function PostJob() {
         toast.error("We couldn't locate that address on the map. Double-check it, or the job may not be visible to nearby providers.");
       }
 
-      // Consumes a Priority Booking add-on purchase (confirmPurchase sets
-      // this after payment — see that function's header comment). One-shot:
-      // cleared immediately so it only ever applies to the next job posted.
-      const usePriorityBoost = !!user?.pending_priority_boost;
+      // Posting goes through createJobPost rather than creating the record
+      // directly: it is what checks the customer is entitled to post, and it
+      // spends the credit only after the job actually exists. The priority
+      // add-on is read server-side there too, so nothing here decides what
+      // the customer is owed.
+      //
+      // The key is generated once per form submission and reused on retry, so
+      // a double-click, a retry or a refresh returns the job already created
+      // instead of posting — and charging — twice.
+      const key = idempotencyKeyRef.current || crypto.randomUUID();
+      idempotencyKeyRef.current = key;
 
-      await base44.entities.Booking.create({
-        ...form,
-        job_description: form.descriptions.join(" | "),
-        photo_urls: photos,
-        status: "pending",
-        customer_name: user?.full_name || "",
-        customer_email: user?.email || "",
-        customer_type: user?.user_type || "Homeowner",
-        ...(coords ? { job_lat: coords.lat, job_lng: coords.lng } : {}),
-        ...(usePriorityBoost ? { is_priority: true } : {}),
+      const res = await base44.functions.invoke("createJobPost", {
+        idempotencyKey: key,
+        job: {
+          ...form,
+          job_description: form.descriptions.join(" | "),
+          photo_urls: photos,
+          ...(coords ? { job_lat: coords.lat, job_lng: coords.lng } : {}),
+        },
       });
 
-      if (usePriorityBoost) {
-        await base44.auth.updateMe({ pending_priority_boost: false }).catch(() => {});
+      if (res?.data?.error) {
+        if (res.data.code === "no_entitlement") {
+          toast.error("You need a post credit to publish this job.");
+          navigate("/plans?need=post");
+          return;
+        }
+        toast.error(res.data.error);
+        setSubmitting(false);
+        return;
       }
     } catch (err) {
       console.error('Error creating booking:', err);
-      toast.error("Failed to post job. Please try again.");
+      const code = err?.response?.data?.code;
+      if (code === "no_entitlement") {
+        toast.error("You need a post credit to publish this job.");
+        navigate("/plans?need=post");
+        return;
+      }
+      toast.error(err?.response?.data?.error || "Failed to post job. Please try again.");
       setSubmitting(false);
       return;
     }
@@ -155,6 +191,48 @@ export default function PostJob() {
           <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-foreground">Post a Job</h1>
           <p className="text-muted-foreground text-sm mt-1">Describe what needs to be done and matching providers near you will see it.</p>
         </div>
+
+        {/* What this post will cost. Shown before the form so the customer is
+            never surprised at the point of submitting. */}
+        {entitlement && (
+          entitlement.subscription?.active ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
+              <Check className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-heading font-bold text-sm text-emerald-900">Included in your subscription</p>
+                <p className="text-xs text-emerald-700">Posting this job won&apos;t use a post credit.</p>
+              </div>
+            </div>
+          ) : entitlement.credits > 0 ? (
+            <div className="rounded-2xl border border-slate-300 bg-slate-50 p-4 flex items-start gap-3">
+              <Ticket className="w-5 h-5 text-slate-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-heading font-bold text-sm text-slate-900">
+                  This will use 1 post credit
+                </p>
+                <p className="text-xs text-slate-600">
+                  You have {entitlement.credits} post{entitlement.credits === 1 ? "" : "s"} available.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+              <Ticket className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-heading font-bold text-sm text-amber-900">You have no posts left</p>
+                <p className="text-xs text-amber-700 mb-2">
+                  Buy a post or a bag of posts to publish this job.
+                </p>
+                <Link
+                  to="/plans?need=post"
+                  className="inline-flex items-center gap-1 text-xs font-heading font-bold text-amber-900 underline"
+                >
+                  View post options
+                </Link>
+              </div>
+            </div>
+          )
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Job Details */}

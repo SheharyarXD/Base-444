@@ -3,13 +3,37 @@ import { CheckCircle, Shield, Zap, Crown, Star, Briefcase, Wrench } from "lucide
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { useSearchParams } from "react-router-dom";
+import {
+  POST_CREDIT_PRODUCTS,
+  POST_CREDIT_ORDER,
+  CUSTOMER_SUBSCRIPTIONS,
+  CUSTOMER_SUBSCRIPTION_ORDER,
+  formatPrice,
+  pricePerPost,
+} from "@/lib/pricing";
 
+// Which add-ons each account type may purchase.
+//
+// handyman_pro and business_pro are deliberately absent. Both grant a
+// subscription flag that nothing in the application reads, so a buyer would
+// be charged monthly for no functional benefit. Everything they originally
+// advertised — bid limits, premium job postings, a separate dashboard, team
+// access, spending reports, discounted rates — would have to be built from
+// scratch, which is well outside completing what already exists.
+//
+// Their definitions, checkout entries, grant logic and cancellation path are
+// all left intact below and in the purchase functions, so anyone already
+// subscribed keeps working and can still cancel. Re-add the id here once the
+// features behind it genuinely exist.
 const plansByType = {
   Homeowner: ["priority_booking"],
   Realtor: ["priority_booking"],
-  "Business Owner": ["priority_booking", "business_pro"],
+  "Business Owner": ["priority_booking"],
   Contractor: ["verified_pro", "featured_listing"],
-  Handyman: ["handyman_pro"],
+  // Handymen are providers too, and the two provider add-ons below are the
+  // ones that actually deliver something today.
+  Handyman: ["verified_pro", "featured_listing"],
 };
 
 const plans = [
@@ -17,16 +41,15 @@ const plans = [
     id: "priority_booking",
     icon: Zap,
     title: "Priority Booking",
-    subtitle: "Jump to the front of the queue",
+    subtitle: "Highlight your job for providers",
     price: 2.99,
     priceLabel: "per booking",
     color: "amber",
     badge: null,
     isSubscription: false,
     features: [
-      "Your request shown first to contractors",
-      "Faster response time guaranteed",
-      "Priority customer support",
+      "Your job is flagged as priority and highlighted for providers",
+      "Applies to your next booking",
       "One-time add-on per booking",
     ],
     cta: "Add Priority",
@@ -43,8 +66,6 @@ const plans = [
     isSubscription: false,
     features: [
       "Pro badge shown on your profile",
-      "Higher placement in search results",
-      "Increased customer trust",
       "Separate from license verification — submit that free from Account",
     ],
     cta: "Get Pro Badge",
@@ -54,18 +75,14 @@ const plans = [
     id: "handyman_pro",
     icon: Wrench,
     title: "Handyman Pro",
-    subtitle: "Everything a handyman needs to succeed",
+    subtitle: "Support the platform",
     price: 12.99,
     priceLabel: "/ month",
     color: "orange",
     badge: "For Handymen",
     isSubscription: true,
     features: [
-      "Unlimited job bids per month",
-      "Priority placement in search results",
-      "Verified Handyman badge on profile",
-      "Access to premium job postings",
-      "Dedicated handyman dashboard",
+      // Not offered for purchase — see plansByType above.
     ],
     cta: "Start Handyman Pro",
   },
@@ -73,17 +90,15 @@ const plans = [
     id: "featured_listing",
     icon: Star,
     title: "Featured Listing",
-    subtitle: "Get seen by more customers",
+    subtitle: "A featured badge on your profile",
     price: 1.99,
     priceLabel: "/ week",
     color: "green",
     badge: "For Contractors",
     isSubscription: false,
     features: [
-      "Top placement on browse page",
-      "Highlighted profile card",
-      "Featured badge visible to customers",
-      "7-day spotlight boost",
+      "Featured badge shown to customers on your profile",
+      "Lasts 7 days from purchase",
     ],
     cta: "Get Featured",
   },
@@ -91,18 +106,14 @@ const plans = [
     id: "business_pro",
     icon: Briefcase,
     title: "Business Pro Plan",
-    subtitle: "For business owners & property managers",
+    subtitle: "Support the platform",
     price: 14.99,
     priceLabel: "/ month",
     color: "teal",
     badge: "For Business Owners",
     isSubscription: true,
     features: [
-      "Manage multiple properties",
-      "Team member access",
-      "Monthly spending reports",
-      "Dedicated account support",
-      "Discounted booking rates",
+      // Not offered for purchase — see plansByType above.
     ],
     cta: "Start Business Pro",
   },
@@ -151,6 +162,13 @@ export default function Plans() {
   const [filteredPlans, setFilteredPlans] = useState([]);
   const [userType, setUserType] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
+  const [entitlement, setEntitlement] = useState(null);
+  const [searchParams] = useSearchParams();
+  // Set when a customer is sent here from a post they could not publish.
+  const needsPost = searchParams.get("need") === "post";
+  // Providers are not charged to receive work under this model, so the
+  // customer post/subscription section is hidden from them entirely.
+  const isProvider = ["Contractor", "Handyman"].includes(userType);
 
   useEffect(() => {
     base44.auth.me().then((me) => {
@@ -160,6 +178,13 @@ export default function Plans() {
       setFilteredPlans(allowed ? plans.filter(p => allowed.includes(p.id)) : plans);
       setLoadingUser(false);
     }).catch(() => setLoadingUser(false));
+
+    // Balance and subscription state are read from the server, never held
+    // in the browser — nothing here can be edited into an entitlement.
+    base44.functions
+      .invoke("getPostEntitlement", {})
+      .then((res) => setEntitlement(res?.data || null))
+      .catch(() => setEntitlement(null));
   }, []);
 
   if (loadingUser) {
@@ -201,6 +226,111 @@ export default function Plans() {
           Get more out of Linked with premium features for homeowners, realtors, and contractors.
         </p>
       </div>
+
+      {/* Post credits and subscription — customers only. Providers are not
+          charged to receive work, so this whole section is hidden for them. */}
+      {!isProvider && (
+        <section className="mb-10">
+          {needsPost && (
+            <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+              <p className="font-heading font-bold text-sm text-amber-900">You&apos;re out of posts</p>
+              <p className="text-xs text-amber-700">
+                Pick up a single post or a bag below, then head back to finish your job post.
+              </p>
+            </div>
+          )}
+
+          <div className="flex items-baseline justify-between gap-3 mb-1">
+            <h2 className="font-heading font-extrabold text-xl text-foreground">Posts</h2>
+            {entitlement && (
+              <span className="text-xs font-heading font-bold text-muted-foreground">
+                {entitlement.subscription?.active
+                  ? "Subscription active"
+                  : `${entitlement.credits} post${entitlement.credits === 1 ? "" : "s"} available`}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground mb-5">
+            One post publishes one job. Buy a single post, or a bag to keep several on hand.
+          </p>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-10">
+            {POST_CREDIT_ORDER.map((id) => {
+              const product = POST_CREDIT_PRODUCTS[id];
+              const each = pricePerPost(id);
+              const single = pricePerPost("post_single");
+              // Only ever shown when the maths actually supports it. At the
+              // currently approved prices a bag costs MORE per post than a
+              // single, so this stays hidden rather than claiming a saving
+              // that does not exist. It will light up on its own if the
+              // prices change.
+              const saves = id !== "post_single" && each < single;
+              return (
+                <div
+                  key={id}
+                  className="rounded-2xl border-2 border-border bg-card p-4 flex flex-col hover:border-primary/40 transition-all"
+                >
+                  <p className="font-heading font-bold text-sm text-foreground leading-tight">{product.name}</p>
+                  <p className="text-2xl font-heading font-extrabold text-foreground mt-2">
+                    {formatPrice(product.price)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {product.credits} post{product.credits === 1 ? "" : "s"}
+                  </p>
+                  {/* Per-post price is always shown for bags so the customer
+                      can compare honestly; it is only coloured as a saving
+                      when it genuinely is one. */}
+                  {id !== "post_single" && (
+                    <p className={`text-[11px] font-semibold mt-1 ${saves ? "text-emerald-700" : "text-muted-foreground"}`}>
+                      {formatPrice(Number(each.toFixed(2)))} per post
+                    </p>
+                  )}
+                  <button
+                    onClick={() => handlePurchase({ id })}
+                    disabled={purchasing === id}
+                    className="mt-4 w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-heading font-bold disabled:opacity-60"
+                  >
+                    {purchasing === id ? "Starting…" : "Buy"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <h2 className="font-heading font-extrabold text-xl text-foreground mb-1">Subscription</h2>
+          <p className="text-sm text-muted-foreground mb-5">
+            Post jobs without buying credits, for as long as your subscription is active.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {CUSTOMER_SUBSCRIPTION_ORDER.map((id) => {
+              const sub = CUSTOMER_SUBSCRIPTIONS[id];
+              const isCurrent = entitlement?.subscription?.active && entitlement.subscription.plan_id === id;
+              return (
+                <div
+                  key={id}
+                  className={`rounded-2xl border-2 p-5 flex flex-col ${
+                    isCurrent ? "border-emerald-400 bg-emerald-50/40" : "border-border bg-card hover:border-primary/40"
+                  } transition-all`}
+                >
+                  <p className="font-heading font-bold text-sm text-foreground">{sub.name}</p>
+                  <p className="text-3xl font-heading font-extrabold text-foreground mt-2">
+                    {formatPrice(sub.price)}
+                    <span className="text-sm font-bold text-muted-foreground"> / {sub.intervalLabel}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{sub.description}</p>
+                  <button
+                    onClick={() => handlePurchase({ id })}
+                    disabled={purchasing === id || isCurrent}
+                    className="mt-5 w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-heading font-bold disabled:opacity-60"
+                  >
+                    {isCurrent ? "Current plan" : purchasing === id ? "Starting…" : "Subscribe"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 w-full">

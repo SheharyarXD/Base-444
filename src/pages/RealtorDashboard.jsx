@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { Link } from "react-router-dom";
 import { Calendar, MapPin, Clock, ChevronRight, Building2, TrendingUp, DollarSign, ClipboardList } from "lucide-react";
@@ -7,21 +7,38 @@ import { Badge } from "@/components/ui/badge";
 import moment from "moment";
 import { motion } from "framer-motion";
 import { BOOKING_STATUS_STYLES as statusStyles, BOOKING_STATUS_LABELS as statusLabels } from "@/lib/bookingStatus";
+import { haversineFeet, geocodeAddress } from "@/lib/geo";
+import { isTrackingStatus, ARRIVED_RADIUS_FEET } from "@/lib/tracking";
 
 export default function RealtorDashboard() {
   const [user, setUser] = useState(null);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  // Refs, not state: these are caches/idempotency guards, and re-rendering
+  // when they change would be pointless churn.
+  const jobCoordsCache = useRef(new Map());
+  const arrivalHandled = useRef(new Set());
 
   useEffect(() => {
     async function load() {
-      const me = await base44.auth.me();
-      setUser(me);
-      if (me.user_type !== "Realtor") { setLoading(false); return; }
-      const data = await base44.entities.Booking.filter({ created_by: me.email }, "-created_date", 100);
-      setBookings(data);
-      setLoading(false);
+      // Wrapped because neither call was guarded before: if the backend was
+      // unreachable, or auth returned nothing, this threw before reaching
+      // setLoading(false) and the page sat on its loading skeleton forever
+      // with no error and no way out. `me?.user_type` matters for the same
+      // reason — a null user used to throw here rather than fall through.
+      try {
+        const me = await base44.auth.me();
+        setUser(me);
+        if (me?.user_type !== "Realtor") return;
+        const data = await base44.entities.Booking.filter({ created_by: me.email }, "-created_date", 100);
+        setBookings(data);
+      } catch (err) {
+        console.error("Failed to load dashboard:", err);
+        toast.error("Couldn't load your jobs. Check your connection and try again.");
+      } finally {
+        setLoading(false);
+      }
     }
     load();
 
@@ -34,30 +51,56 @@ export default function RealtorDashboard() {
     return unsubscribe;
   }, []);
 
-  function getDistanceFeet(lat1, lng1, lat2, lng2) {
-    const R = 20902231;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLng/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  // Resolves a booking's job coordinates at most once per booking, ever.
+  //
+  // This used to re-geocode the address through Nominatim on EVERY Booking
+  // update event. Since a provider's location updates are themselves Booking
+  // updates, an active job produced one third-party geocoding request per GPS
+  // update, per open dashboard — an easy way to get rate-limited or blocked
+  // by Nominatim's usage policy, for an address that never changes.
+  //
+  // Prefers the job_lat/job_lng stamped at creation time (see PostJob.jsx),
+  // so in the normal case there is now no network call at all.
+  async function resolveJobCoords(booking) {
+    if (Number.isFinite(booking.job_lat) && Number.isFinite(booking.job_lng)) {
+      return { lat: booking.job_lat, lng: booking.job_lng };
+    }
+    if (jobCoordsCache.current.has(booking.id)) {
+      return jobCoordsCache.current.get(booking.id);
+    }
+    const pending = geocodeAddress(booking.address);
+    // Cache the promise, not just the result, so N concurrent events for the
+    // same booking collapse into a single in-flight request.
+    jobCoordsCache.current.set(booking.id, pending);
+    return pending;
   }
 
   async function checkProximity(booking) {
-    if (booking.status !== "on_the_way" || !booking.contractor_lat || !booking.contractor_lng) return;
-    
+    // 'arriving' is a tracked state too, and a completed/cancelled job must
+    // never re-trigger arrival detection.
+    if (!isTrackingStatus(booking.status)) return;
+    if (!Number.isFinite(booking.contractor_lat) || !Number.isFinite(booking.contractor_lng)) return;
+    // Only auto-advance once per booking — without this, every subsequent
+    // location update inside the geofence fired another updateBookingStatus
+    // call (the server rejects the repeats with a 409, but the request and
+    // the toast still happened).
+    if (arrivalHandled.current.has(booking.id)) return;
+
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(booking.address)}&limit=1`);
-      const data = await res.json();
-      if (data[0]) {
-        const addressLat = parseFloat(data[0].lat);
-        const addressLng = parseFloat(data[0].lon);
-        const distance = getDistanceFeet(booking.contractor_lat, booking.contractor_lng, addressLat, addressLng);
-        if (distance <= 500) {
-          const res = await base44.functions.invoke('updateBookingStatus', { bookingId: booking.id, status: "in_progress" });
-          if (!res.data?.error) toast.success(`🎉 ${booking.contractor_name} has arrived!`);
-        }
-      }
-    } catch {}
+      const coords = await resolveJobCoords(booking);
+      if (!coords) return;
+      const distance = haversineFeet(
+        booking.contractor_lat, booking.contractor_lng, coords.lat, coords.lng,
+      );
+      if (distance > ARRIVED_RADIUS_FEET) return;
+
+      arrivalHandled.current.add(booking.id);
+      const res = await base44.functions.invoke('updateBookingStatus', { bookingId: booking.id, status: "in_progress" });
+      if (!res.data?.error) toast.success(`🎉 ${booking.contractor_name} has arrived!`);
+    } catch {
+      // Geocoding or the status call failed — the provider's own "I've
+      // Arrived" button remains the primary path, so nothing is blocked.
+    }
   }
 
   if (loading) {
@@ -79,12 +122,12 @@ export default function RealtorDashboard() {
     );
   }
 
-  const filters = ["all", "pending", "accepted", "on_the_way", "completed", "cancelled"];
+  const filters = ["all", "pending", "accepted", "on_the_way", "arriving", "completed", "cancelled"];
   // Completed tab already included above
   const filtered = filter === "all" ? bookings : bookings.filter(b => b.status === filter);
 
   const totalSpend = bookings.filter(b => b.status === "completed").reduce((s, b) => s + (b.estimated_cost || 0), 0);
-  const activeCount = bookings.filter(b => ["pending","accepted","in_progress"].includes(b.status)).length;
+  const activeCount = bookings.filter(b => ["pending","accepted","on_the_way","arriving","in_progress"].includes(b.status)).length;
 
   async function markCompleted(e, bookingId) {
     e.preventDefault();

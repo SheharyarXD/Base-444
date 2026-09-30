@@ -16,15 +16,34 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-export default function AddressMap({ address }) {
+/**
+ * Static map for a job's address.
+ *
+ * `lat`/`lng` are the coordinates stamped on the booking when it was created
+ * (PostJob.jsx / BookContractor.jsx both do this). Prefer them: geocoding the
+ * address string again is both a wasted third-party request and actively
+ * wrong when callers pass only the street line — "482 Willow Creek Dr" with
+ * no city or state matches streets nationwide, so the pin could land in the
+ * wrong state entirely. Geocoding is now only the fallback for older
+ * bookings saved before coordinates were recorded.
+ */
+export default function AddressMap({ address, lat, lng }) {
   const [coords, setCoords] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      setCoords({ lat, lng });
+      setError(false);
+      setLoading(false);
+      return;
+    }
     if (!address) return;
+    let cancelled = false;
     async function geocode() {
       const result = await geocodeAddress(address);
+      if (cancelled) return;
       if (result) {
         setCoords(result);
       } else {
@@ -33,7 +52,8 @@ export default function AddressMap({ address }) {
       setLoading(false);
     }
     geocode();
-  }, [address]);
+    return () => { cancelled = true; };
+  }, [address, lat, lng]);
 
   if (loading) {
     return (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Calendar, MapPin, Clock, MessageCircle, Navigation, Car, X, Download, Camera, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,12 @@ import ReminderBanner, { useActiveReminders } from "../components/ReminderBanner
 import { toast } from "sonner";
 import moment from "moment";
 import { motion } from "framer-motion";
-import { haversineFeet } from "@/lib/geo";
+import { haversineFeet, geocodeAddress } from "@/lib/geo";
 import { canViewFullJobDetails, maskedCityStateZip } from "@/lib/jobPrivacy";
 import { isProviderEligibleForJob } from "@/lib/matching";
 import { BOOKING_STATUS_STYLES as statusStyles, BOOKING_STATUS_LABELS as statusLabels } from "@/lib/bookingStatus";
+import { useProviderLocationTracking, TRACKING_STATE } from "@/hooks/useProviderLocationTracking";
+import { isTrackingStatus, ARRIVED_RADIUS_FEET, ARRIVING_RADIUS_FEET } from "@/lib/tracking";
 
 export default function BookingDetail() {
   const { id } = useParams();
@@ -32,7 +34,6 @@ export default function BookingDetail() {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [optimisticStatus, setOptimisticStatus] = useState(null);
-  const [trackingActive, setTrackingActive] = useState(false);
   const [arrivedPrompt, setArrivedPrompt] = useState(false);
   const [jobCoords, setJobCoords] = useState(null);
   const [showReviewPrompt, setShowReviewPrompt] = useState(false);
@@ -50,21 +51,54 @@ export default function BookingDetail() {
     type: "on_the_way_pending",
   });
 
+  // The street line alone is ambiguous nationwide — "482 Willow Creek Dr"
+  // exists in many states — so every geocode of this booking uses the
+  // qualified form. Declared here, above the loading/not-found early returns,
+  // because the geocode effect below closes over it.
+  const fullJobAddress = [booking?.address, booking?.city, booking?.state, booking?.zip]
+    .filter(Boolean)
+    .join(", ");
+
+  // Mirrors `nearbyAlerted` into a ref: the Booking.subscribe callback below
+  // is registered once on mount, so it closes over the first render's state
+  // and would never observe the updated value.
+  const nearbyAlertedRef = useRef(false);
+  useEffect(() => { nearbyAlertedRef.current = nearbyAlerted; }, [nearbyAlerted]);
+
   function checkProximity(bookingData, userCoords) {
-    if (!bookingData?.contractor_lat || !bookingData?.contractor_lng || !userCoords || nearbyAlerted) return;
+    if (!bookingData?.contractor_lat || !bookingData?.contractor_lng || !userCoords || nearbyAlertedRef.current) return;
     const dist = haversineFeet(userCoords.lat, userCoords.lng, bookingData.contractor_lat, bookingData.contractor_lng);
-    if (dist <= 1000) {
-      toast.info("📍 Contractor is within 1000 feet! They'll arrive shortly.", { duration: 8000 });
+    if (dist <= ARRIVING_RADIUS_FEET) {
+      toast.info("📍 Your contractor is nearby — they'll arrive shortly.", { duration: 8000 });
       setNearbyAlerted(true);
     }
   }
 
   useEffect(() => {
     async function load() {
-      const [b, me] = await Promise.all([base44.entities.Booking.get(id), base44.auth.me()]);
+      const me = await base44.auth.me();
+      // Participants — the customer who posted the job and the provider who
+      // accepted it — read the record directly, exactly as before.
+      let b = await base44.entities.Booking.get(id).catch(() => null);
+
+      // A provider looking at a job they have not accepted is no longer
+      // entitled to the raw record: the access rule that used to make every
+      // pending job readable by everyone also exposed the customer's phone,
+      // email and exact address. Fall back to the redacted view, which is
+      // enough to decide whether to accept.
+      if (!b) {
+        try {
+          const res = await base44.functions.invoke("getOpenJobs", { bookingId: id });
+          b = res?.data?.job || null;
+        } catch {
+          b = null;
+        }
+      }
+
       setBooking(b);
       setUser(me);
       setLoading(false);
+      if (!b) return;
 
       // Needed to gate the Accept button / chat on a still-pending job to
       // only the providers who are actually eligible for it — pending jobs
@@ -130,7 +164,7 @@ export default function BookingDetail() {
         if (event.data.status === "on_the_way") {
           toast.info("🚗 Your contractor is on the way!", { duration: 6000 });
         }
-        if (event.data.status === "completed" && event.data.customer_email === event.data.customer_email) {
+        if (event.data.status === "completed") {
           // Show review prompt to customer
           base44.auth.me().then(me => {
             if (me?.email === event.data.customer_email) setShowReviewPrompt(true);
@@ -140,12 +174,17 @@ export default function BookingDetail() {
           // Check if contractor arrived (within 200ft) for customer notification
           if (jobCoords && !contractorArrived) {
             const dist = haversineFeet(event.data.contractor_lat, event.data.contractor_lng, jobCoords.lat, jobCoords.lng);
-            if (dist <= 200) {
+            if (dist <= ARRIVED_RADIUS_FEET) {
               setContractorArrived(true);
               toast.success("🚗 Contractor has arrived!", { duration: 8000 });
             }
           }
-          if (navigator.geolocation) {
+          // The "contractor is nearby" toast fires at most once per booking,
+          // so once it has, there is nothing left for a position fix to
+          // decide. Without this guard the customer's device was asked for a
+          // fresh GPS reading on every single provider location update, for
+          // the rest of the journey, to compute a toast already shown.
+          if (navigator.geolocation && !nearbyAlertedRef.current) {
             navigator.geolocation.getCurrentPosition((pos) => {
               checkProximity(event.data, { lat: pos.coords.latitude, lng: pos.coords.longitude });
             });
@@ -159,43 +198,49 @@ export default function BookingDetail() {
   // Geocode job address for arrival detection
   useEffect(() => {
     if (!booking?.address) return;
-    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(booking.address)}&limit=1`)
-      .then(r => r.json())
-      .then(data => {
-        if (data[0]) setJobCoords({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
-      })
-      .catch(() => {});
+    // Prefer the coordinates cached on the booking at creation time. Falling
+    // straight to geocoding meant the arrival geofence was measured against
+    // whatever Nominatim made of a bare street line with no city or state —
+    // see the note in TrackingMap.jsx.
+    if (Number.isFinite(booking.job_lat) && Number.isFinite(booking.job_lng)) {
+      setJobCoords({ lat: booking.job_lat, lng: booking.job_lng });
+      return;
+    }
+    geocodeAddress(fullJobAddress).then((coords) => {
+      if (coords) setJobCoords(coords);
+    });
   }, [booking?.address]);
 
-  // GPS tracking for contractors on the way
-  useEffect(() => {
-    if (!user || !booking) return;
-    const isContractor = user.email === booking.accepted_by_email || (!booking.accepted_by_email && ["Contractor", "Handyman"].includes(user.user_type));
-    if (!isContractor || booking.status !== "on_the_way") return;
-    if (!navigator.geolocation) return;
+  // Provider-side GPS capture. The watch/throttle/authorized-write mechanics
+  // now live in useProviderLocationTracking + updateProviderLocation; this
+  // page just reports the resulting state. The previous inline version wrote
+  // every raw fix straight to Booking.update() and would start tracking for
+  // ANY provider-typed viewer whenever accepted_by_email happened to be unset.
+  const { state: trackingState, retry: retryTracking } = useProviderLocationTracking({
+    booking,
+    viewerEmail: user?.email,
+  });
+  const trackingActive = trackingState === TRACKING_STATE.ACTIVE;
 
-    setTrackingActive(true);
+  // Geofence for the provider's own "you look like you've arrived" prompt.
+  // Kept separate from the location *write* path above: this is a local UI
+  // hint computed from the browser's own position, so it doesn't need (and
+  // shouldn't wait on) a backend round trip.
+  useEffect(() => {
+    if (!isTrackingStatus(booking?.status)) return undefined;
+    if (booking?.accepted_by_email !== user?.email) return undefined;
+    if (!jobCoords || !navigator.geolocation) return undefined;
+
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        base44.entities.Booking.update(id, {
-          contractor_lat: pos.coords.latitude,
-          contractor_lng: pos.coords.longitude,
-        }).catch(() => {});
-        // Check if within 200ft of job address
-        if (jobCoords) {
-          const dist = haversineFeet(pos.coords.latitude, pos.coords.longitude, jobCoords.lat, jobCoords.lng);
-          if (dist <= 200) setArrivedPrompt(true);
-        }
+        const dist = haversineFeet(pos.coords.latitude, pos.coords.longitude, jobCoords.lat, jobCoords.lng);
+        if (dist <= ARRIVED_RADIUS_FEET) setArrivedPrompt(true);
       },
-      () => setTrackingActive(false),
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      () => {},
+      { enableHighAccuracy: false, maximumAge: 30000, timeout: 20000 }
     );
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-      setTrackingActive(false);
-    };
-  }, [user?.email, booking?.status, id, jobCoords]);
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [booking?.status, booking?.accepted_by_email, user?.email, jobCoords]);
 
   // Routed through updateBookingStatus (not a raw Booking.update) — that
   // function re-checks the current status and caller identity server-side
@@ -223,6 +268,13 @@ export default function BookingDetail() {
 
   function cancelBooking() {
     return changeStatus("cancelled", { successMessage: "Booking cancelled", errorMessage: "Failed to cancel booking" });
+  }
+
+  function markArriving() {
+    return changeStatus("arriving", {
+      successMessage: "Customer notified that you're arriving",
+      errorMessage: "Failed to update status",
+    });
   }
 
   function markArrived() {
@@ -449,6 +501,22 @@ export default function BookingDetail() {
         )}
 
         {/* On The Way Banner */}
+        {booking.status === "arriving" && !contractorArrived && (
+          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+              <Navigation className="w-5 h-5 text-indigo-600" />
+            </div>
+            <div>
+              <p className="font-heading font-bold text-indigo-800">
+                {isCustomer ? "Your contractor is arriving!" : "You're marked as arriving"}
+              </p>
+              <p className="text-xs text-indigo-600">
+                {isCustomer ? "They're nearby and should be with you shortly." : "The customer knows you're nearly there."}
+              </p>
+            </div>
+          </div>
+        )}
+
         {booking.status === "on_the_way" && !contractorArrived && (
           <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
@@ -493,21 +561,99 @@ export default function BookingDetail() {
           </Link>
         </div>
 
-        {/* GPS Active Indicator for Contractor */}
+        {/* Geofence nudge for the provider. `arrivedPrompt` was previously
+            set by the GPS watch but never rendered anywhere — the provider
+            was never actually prompted, which is why "I've Arrived" was easy
+            to forget and jobs sat in on_the_way. */}
+        {arrivedPrompt && isTrackingStatus(booking.status) && isAcceptedContractor && (
+          <div className="bg-emerald-50 border-2 border-emerald-400 rounded-2xl p-4 flex flex-col gap-3 shadow-md">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+                <CheckCircle className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="font-heading font-bold text-emerald-900 text-sm">Looks like you&apos;ve arrived</p>
+                <p className="text-xs text-emerald-700">Mark the job as started so the customer knows.</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={markArrived}
+                className="flex-1 h-11 rounded-xl font-heading font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                I&apos;ve Arrived
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setArrivedPrompt(false)}
+                className="h-11 px-4 rounded-xl font-heading font-bold"
+              >
+                Not yet
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Provider-side tracking status. Previously this only ever rendered
+            the happy path, so a provider who denied the location permission
+            saw nothing at all and had no idea the customer couldn't see them. */}
         {trackingActive && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center gap-3">
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
             <p className="text-sm text-emerald-700 font-semibold">GPS tracking active — sharing your location with the customer</p>
           </div>
         )}
+        {trackingState === TRACKING_STATE.ACQUIRING && (
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-slate-400 animate-pulse shrink-0" />
+            <p className="text-sm text-slate-600 font-semibold">Getting your location…</p>
+          </div>
+        )}
+        {trackingState === TRACKING_STATE.DENIED && (
+          <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-col gap-2">
+            <p className="font-heading font-bold text-amber-900 text-sm">Location sharing is blocked</p>
+            <p className="text-xs text-amber-700">
+              The customer can&apos;t see how far away you are. Location is only used while you&apos;re
+              on the way to this job, and stops when it&apos;s finished. Enable location for this site
+              in your browser settings, then tap Retry.
+            </p>
+            <Button
+              variant="outline"
+              onClick={retryTracking}
+              className="h-9 rounded-xl font-heading font-bold text-xs w-fit"
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+        {trackingState === TRACKING_STATE.UNAVAILABLE && (
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col gap-2">
+            <p className="font-heading font-bold text-slate-800 text-sm">Location unavailable</p>
+            <p className="text-xs text-slate-600">
+              This device couldn&apos;t provide a position, so the customer will only see the job
+              status — not your distance. You can still complete the job as normal.
+            </p>
+            <Button
+              variant="outline"
+              onClick={retryTracking}
+              className="h-9 rounded-xl font-heading font-bold text-xs w-fit"
+            >
+              Retry
+            </Button>
+          </div>
+        )}
 
         {/* Tracking Map - Show when contractor is on the way */}
-        {booking.status === "on_the_way" && booking.contractor_lat && booking.contractor_lng && (
+        {isTrackingStatus(booking.status) && (
           <TrackingMap
-            address={booking.address}
+            address={fullJobAddress}
+            jobLat={booking.job_lat}
+            jobLng={booking.job_lng}
             contractorLat={booking.contractor_lat}
             contractorLng={booking.contractor_lng}
-            contractorName={booking.contractor_name}
+            contractorName={booking.contractor_name || booking.accepted_by_name}
+            locationUpdatedAt={booking.contractor_location_updated_at}
+            statusLabel={booking.status === "arriving" ? "is arriving now" : "is on the way"}
           />
         )}
 
@@ -557,9 +703,9 @@ export default function BookingDetail() {
               </div>
             </div>
           </div>
-          {booking.address && booking.status !== "on_the_way" && canViewFull && (
+          {booking.address && !isTrackingStatus(booking.status) && canViewFull && (
             <div className="pt-4 border-t border-border">
-              <AddressMap address={booking.address} />
+              <AddressMap address={fullJobAddress} lat={booking.job_lat} lng={booking.job_lng} />
             </div>
           )}
           {booking.photo_urls?.length > 0 && (
@@ -776,12 +922,28 @@ export default function BookingDetail() {
               </Button>
             )}
 
+            {/* Optional "almost there" step. Only offered to the accepted
+                provider, and only from on_the_way — the customer must never
+                be able to declare the provider nearby (enforced server-side
+                in updateBookingStatus, this just matches it in the UI). */}
+            {booking.status === "on_the_way" && isAcceptedContractor && (
+              <Button
+                onClick={markArriving}
+                disabled={optimisticStatus === "arriving"}
+                variant="outline"
+                className="flex-1 rounded-2xl h-12 min-h-[44px] font-heading font-bold border-indigo-300 text-indigo-700 hover:bg-indigo-50 gap-2"
+              >
+                <Navigation className="w-4 h-4" />
+                {optimisticStatus === "arriving" ? "Updating..." : "Almost There"}
+              </Button>
+            )}
+
             {/* "Arrived" was previously only reachable via RealtorDashboard's
                 geofence auto-detection — a normal (non-Realtor) job had no UI
                 path from on_the_way to in_progress at all, so it could never
                 be marked completed. This is that missing step, available to
                 the accepted provider on any booking. */}
-            {booking.status === "on_the_way" && isAcceptedContractor && (
+            {isTrackingStatus(booking.status) && isAcceptedContractor && (
               <Button
                 onClick={markArrived}
                 className="flex-1 rounded-2xl h-12 min-h-[44px] font-heading font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
@@ -792,7 +954,7 @@ export default function BookingDetail() {
             )}
 
             {((booking.status === "pending" && isCustomer) ||
-              (["accepted", "on_the_way", "in_progress"].includes(booking.status) && (isCustomer || isAcceptedContractor)) ||
+              (["accepted", "on_the_way", "arriving", "in_progress"].includes(booking.status) && (isCustomer || isAcceptedContractor)) ||
               optimisticStatus === "cancelled") && (
               <Button
                 variant="outline"

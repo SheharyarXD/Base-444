@@ -74,13 +74,19 @@ describe("createCheckout", () => {
     expect(item.name).toBe("Priority Booking");
   });
 
-  it("marks a subscription plan's checkout session as a monthly subscription", async () => {
-    await handler(makeReq({ planId: "handyman_pro" }));
-
-    const [, options] = fetchMock.mock.calls[0];
-    const item = JSON.parse(options.body).cart.items[0];
-    expect(item.price).toBe("12.99");
-    expect(item.subscriptionInfo?.subscriptionSettings?.frequency).toBe("MONTH");
+  // This used to drive the subscription branch with handyman_pro. Both
+  // subscription plans have since been withdrawn from sale, so no purchasable
+  // plan reaches that branch any more — the assertion is now that none does,
+  // which is the property that actually matters. The branch itself is kept in
+  // the function for the withdrawn plans and any future subscription.
+  it("charges no recurring plan, because every purchasable plan is one-time", async () => {
+    for (const planId of ["priority_booking", "verified_pro", "featured_listing"]) {
+      fetchMock.mockClear();
+      await handler(makeReq({ planId }));
+      const [, options] = fetchMock.mock.calls[0];
+      const item = JSON.parse(options.body).cart.items[0];
+      expect(item.subscriptionInfo).toBeUndefined();
+    }
   });
 
   it("does not attach subscriptionInfo for a one-time plan", async () => {
@@ -118,5 +124,32 @@ describe("createCheckout", () => {
     const [, options] = fetchMock.mock.calls[0];
     const sentBody = JSON.parse(options.body);
     expect(sentBody.callbackUrls.thankYouPageUrl).toContain(`token=${createdIntent.token}`);
+  });
+
+  // Removing a plan from the pricing page is presentation only — this
+  // function is what actually starts a charge.
+  describe("withdrawn plans", () => {
+    beforeEach(() => {
+      mockClient.auth.me.mockResolvedValue({ id: "u1", email: "u@x.com" });
+    });
+
+    for (const planId of ["handyman_pro", "business_pro"]) {
+      it(`refuses to start a checkout for ${planId}`, async () => {
+        const res = await handler(makeReq({ planId }));
+        expect(res.status).toBe(410);
+      });
+
+      it(`does not mint a purchase intent for ${planId}`, async () => {
+        await handler(makeReq({ planId }));
+        expect(mockClient.asServiceRole.entities.PurchaseIntent.create).not.toHaveBeenCalled();
+      });
+    }
+
+    it("still allows the plans that actually deliver something", async () => {
+      for (const planId of ["priority_booking", "verified_pro", "featured_listing"]) {
+        const res = await handler(makeReq({ planId }));
+        expect(res.status ?? 200).not.toBe(410);
+      }
+    });
   });
 });

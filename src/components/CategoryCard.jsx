@@ -61,7 +61,13 @@ export default function CategoryCard({ category }) {
 
   return (
     <Link
-      to={`/browse?category=${encodeURIComponent(category)}`}
+      // Was /browse?category=... — the contractor directory that was retired in
+      // favour of map-driven discovery. That route now only redirects to the
+      // map, and the redirect drops the query string, so the chosen category
+      // was silently discarded. Posting a job in that category is the real
+      // customer action behind tapping a category, and PostJob reads the
+      // parameter.
+      to={`/post-job?category=${encodeURIComponent(category)}`}
       className="group flex flex-col items-center gap-3 p-4 rounded-2xl bg-card border border-border hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300"
     >
       <div className={`w-14 h-14 rounded-2xl ${colorClass} flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>

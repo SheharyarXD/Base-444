@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { AlertCircle, Scale, Eye, DollarSign, Shield } from "lucide-react";
+import { AlertCircle, Scale, Eye, DollarSign, Shield, Navigation } from "lucide-react";
 
 export default function Disclaimer() {
   const sections = [
@@ -11,7 +11,20 @@ export default function Disclaimer() {
     {
       icon: Eye,
       title: "Privacy & Data",
-      content: "We collect email, phone, location, and payment information to operate the platform. Your data is never sold. Contractors' and customers' contact details are shared only to facilitate job bookings. We use industry-standard encryption to protect your information.",
+      content: "We collect the email address, phone number, service address, and payment information you provide, in order to operate the platform. Your data is never sold. Contractors' and customers' contact details are shared only to facilitate job bookings — a provider deciding whether to accept an open job sees only the general area (city, state, and ZIP), not your exact address or contact details, until they have accepted it.",
+    },
+    {
+      // Phase 3 added provider location tracking, so the disclosure has to
+      // describe what the code actually does. Every claim below maps to a
+      // specific enforced behaviour: updateProviderLocation refuses to write
+      // outside the on_the_way/arriving states and to anyone but the assigned
+      // provider; updateBookingStatus nulls the coordinates on
+      // completion/cancellation; and src/lib/tracking.js throttles the
+      // capture rate. Do not soften or extend these sentences without
+      // changing the corresponding code.
+      icon: Navigation,
+      title: "Location Tracking",
+      content: "Location is used for two things. First, to show you jobs or providers near you — this uses a one-off location reading, or a ZIP code you type in, and is not stored. Second, when a provider is travelling to an accepted job, their device shares its position with that job's customer so you can see how far away they are. Provider location sharing starts only when the provider marks themselves on the way, is visible only to the customer on that specific job, and stops when the job is completed or cancelled — at which point the stored coordinates are deleted. We do not collect location in the background when the app is closed, we do not keep a location history, and we never share a provider's location with other customers or providers. Location sharing can be declined; the job can still be completed without it.",
     },
     {
       icon: DollarSign,
@@ -97,10 +110,10 @@ export default function Disclaimer() {
           </h3>
           <div className="space-y-3 text-sm text-muted-foreground">
             <p>
-              <strong className="text-foreground">Verification:</strong> While we vet contractors, Instant does not guarantee quality of work or contractor qualifications. Always request references and reviews before booking.
+              <strong className="text-foreground">Verification:</strong> Providers may submit license and business details for review, and a Verified badge reflects that review. Linked does not employ, supervise, background-check, or insure providers, and does not guarantee quality of work or a provider&apos;s qualifications. Always request references and read reviews before booking.
             </p>
             <p>
-              <strong className="text-foreground">Insurance:</strong> Contractors are solely responsible for obtaining liability and workers' compensation insurance. Instant provides no coverage.
+              <strong className="text-foreground">Insurance:</strong> Providers are solely responsible for obtaining liability and workers&apos; compensation insurance. Linked does not verify insurance and provides no coverage.
             </p>
             <p>
               <strong className="text-foreground">Modifications:</strong> We may update these terms at any time. Continued use constitutes acceptance of changes.

@@ -167,9 +167,12 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Get all accepted or on-the-way bookings
+    // Get all bookings for a job that is committed but not yet finished
     const bookings = await base44.asServiceRole.entities.Booking.filter({
-      status: { $in: ['accepted', 'on_the_way'] }
+      // 'arriving' included so a Phase 3 job that has moved past on_the_way
+      // is still covered by the same reminder sweep rather than dropping out
+      // of it mid-journey.
+      status: { $in: ['accepted', 'on_the_way', 'arriving'] }
     });
 
     const now = new Date();

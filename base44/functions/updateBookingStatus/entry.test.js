@@ -228,4 +228,114 @@ describe("updateBookingStatus", () => {
     const res = await handler(makeReq({ bookingId: "b1", status: "on_the_way" }));
     expect(res.status).toBe(500);
   });
+
+  // --- Phase 3: the 'arriving' state -------------------------------------
+  describe("arriving", () => {
+    const PRO = "c@x.com";
+    const CUST = "cust@x.com";
+    const onTheWay = {
+      id: "b1", status: "on_the_way", accepted_by_email: PRO, created_by: CUST, customer_email: CUST,
+    };
+
+    it("lets the accepted contractor move on_the_way -> arriving", async () => {
+      mockClient.auth.me.mockResolvedValue({ email: PRO });
+      mockClient.asServiceRole.entities.Booking.get.mockResolvedValue(onTheWay);
+      const res = await handler(makeReq({ bookingId: "b1", status: "arriving" }));
+      expect(res.status ?? 200).toBe(200);
+      expect(mockClient.asServiceRole.entities.Booking.update).toHaveBeenCalledWith("b1", { status: "arriving" });
+    });
+
+    it("does NOT let the customer declare the provider arriving", async () => {
+      mockClient.auth.me.mockResolvedValue({ email: CUST });
+      mockClient.asServiceRole.entities.Booking.get.mockResolvedValue(onTheWay);
+      const res = await handler(makeReq({ bookingId: "b1", status: "arriving" }));
+      expect(res.status).toBe(403);
+    });
+
+    it("does not let an unrelated user declare arriving", async () => {
+      mockClient.auth.me.mockResolvedValue({ email: "rando@x.com" });
+      mockClient.asServiceRole.entities.Booking.get.mockResolvedValue(onTheWay);
+      const res = await handler(makeReq({ bookingId: "b1", status: "arriving" }));
+      expect(res.status).toBe(403);
+    });
+
+    it("409s skipping straight from accepted to arriving", async () => {
+      mockClient.auth.me.mockResolvedValue({ email: PRO });
+      mockClient.asServiceRole.entities.Booking.get.mockResolvedValue({ ...onTheWay, status: "accepted" });
+      const res = await handler(makeReq({ bookingId: "b1", status: "arriving" }));
+      expect(res.status).toBe(409);
+    });
+
+    it("409s going backwards from arriving to on_the_way", async () => {
+      mockClient.auth.me.mockResolvedValue({ email: PRO });
+      mockClient.asServiceRole.entities.Booking.get.mockResolvedValue({ ...onTheWay, status: "arriving" });
+      const res = await handler(makeReq({ bookingId: "b1", status: "on_the_way" }));
+      expect(res.status).toBe(409);
+    });
+
+    it("keeps the arrival step optional — on_the_way -> in_progress still works", async () => {
+      mockClient.auth.me.mockResolvedValue({ email: PRO });
+      mockClient.asServiceRole.entities.Booking.get.mockResolvedValue(onTheWay);
+      const res = await handler(makeReq({ bookingId: "b1", status: "in_progress" }));
+      expect(res.status ?? 200).toBe(200);
+    });
+
+    for (const next of ["in_progress", "completed", "cancelled"]) {
+      it(`allows arriving -> ${next}`, async () => {
+        mockClient.auth.me.mockResolvedValue({ email: PRO });
+        mockClient.asServiceRole.entities.Booking.get.mockResolvedValue({ ...onTheWay, status: "arriving" });
+        const res = await handler(makeReq({ bookingId: "b1", status: next }));
+        expect(res.status ?? 200).toBe(200);
+      });
+    }
+  });
+
+  // --- Phase 3: location retention (§9/§22) ------------------------------
+  describe("clearing tracked location on terminal states", () => {
+    const PRO = "c@x.com";
+    const CUST = "cust@x.com";
+    const tracked = {
+      id: "b1", accepted_by_email: PRO, created_by: CUST, customer_email: CUST,
+      contractor_lat: 40, contractor_lng: -74,
+      contractor_location_updated_at: "2026-01-01T00:00:00.000Z",
+      contractor_location_accuracy_m: 12,
+    };
+
+    it("wipes the stored position in the same write that completes the job", async () => {
+      mockClient.auth.me.mockResolvedValue({ email: PRO });
+      mockClient.asServiceRole.entities.Booking.get.mockResolvedValue({ ...tracked, status: "arriving" });
+
+      await handler(makeReq({ bookingId: "b1", status: "completed" }));
+
+      expect(mockClient.asServiceRole.entities.Booking.update).toHaveBeenCalledWith("b1", {
+        status: "completed",
+        contractor_lat: null,
+        contractor_lng: null,
+        contractor_location_updated_at: null,
+        contractor_location_accuracy_m: null,
+      });
+    });
+
+    it("wipes the stored position on cancellation too", async () => {
+      mockClient.auth.me.mockResolvedValue({ email: CUST });
+      mockClient.asServiceRole.entities.Booking.get.mockResolvedValue({ ...tracked, status: "on_the_way" });
+
+      await handler(makeReq({ bookingId: "b1", status: "cancelled" }));
+
+      const patch = mockClient.asServiceRole.entities.Booking.update.mock.calls[0][1];
+      expect(patch.contractor_lat).toBeNull();
+      expect(patch.contractor_lng).toBeNull();
+      expect(patch.contractor_location_updated_at).toBeNull();
+      expect(patch.contractor_location_accuracy_m).toBeNull();
+    });
+
+    it("leaves the position alone on a non-terminal transition", async () => {
+      mockClient.auth.me.mockResolvedValue({ email: PRO });
+      mockClient.asServiceRole.entities.Booking.get.mockResolvedValue({ ...tracked, status: "on_the_way" });
+
+      await handler(makeReq({ bookingId: "b1", status: "arriving" }));
+
+      expect(mockClient.asServiceRole.entities.Booking.update).toHaveBeenCalledWith("b1", { status: "arriving" });
+    });
+  });
 });

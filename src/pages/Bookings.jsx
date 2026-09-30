@@ -12,6 +12,12 @@ const tabs = [
   { value: "cancelled", label: "Cancelled", icon: XCircle },
 ];
 
+// Every status that represents a live job. Kept in one place because the
+// "Active" tab and the cancel button previously duplicated this list, so a
+// newly-added status (Phase 3's `arriving`) would silently fall out of both
+// — showing under no tab at all.
+const ACTIVE_BOOKING_STATUSES = ["pending", "accepted", "on_the_way", "arriving", "in_progress"];
+
 export default function Bookings() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -105,7 +111,7 @@ export default function Bookings() {
   }, [pullY]);
 
   const filtered = bookings.filter((b) => {
-    if (activeTab === "active") return ["pending", "accepted", "on_the_way", "in_progress"].includes(b.status);
+    if (activeTab === "active") return ACTIVE_BOOKING_STATUSES.includes(b.status);
     if (activeTab === "completed") return b.status === "completed";
     if (activeTab === "cancelled") return b.status === "cancelled";
     return true;
@@ -181,14 +187,30 @@ export default function Bookings() {
             >
               <div className="flex flex-col gap-2">
                 <BookingCard booking={b} showAddressLink={isContractor} latestMessage={messagesByBooking[b.id]} />
-                {["pending", "accepted", "on_the_way", "in_progress"].includes(b.status) && (
+                {ACTIVE_BOOKING_STATUSES.includes(b.status) && (
                   <button
                     onClick={async () => {
+                      // Was a raw Booking.update({status:"cancelled"}), which
+                      // bypassed updateBookingStatus entirely — the one place
+                      // that enforces who may cancel what and when. Booking's
+                      // RLS is row-level only, so this let the accepted
+                      // provider cancel a booking the transition table says
+                      // only the customer may cancel, skipped the reminder
+                      // cleanup, and left any tracked coordinates behind.
                       setCancellingId(b.id);
-                      await base44.entities.Booking.update(b.id, { status: "cancelled" });
-                      setBookings(prev => prev.map(x => x.id === b.id ? { ...x, status: "cancelled" } : x));
-                      toast.success("Booking cancelled");
-                      setCancellingId(null);
+                      try {
+                        const res = await base44.functions.invoke('updateBookingStatus', { bookingId: b.id, status: "cancelled" });
+                        if (res.data?.error) {
+                          toast.error(res.data.error);
+                          return;
+                        }
+                        setBookings(prev => prev.map(x => x.id === b.id ? { ...x, status: "cancelled" } : x));
+                        toast.success("Booking cancelled");
+                      } catch (err) {
+                        toast.error(err?.response?.data?.error || "Failed to cancel booking");
+                      } finally {
+                        setCancellingId(null);
+                      }
                     }}
                     disabled={cancellingId === b.id}
                     className="w-full py-2.5 text-sm font-semibold rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"

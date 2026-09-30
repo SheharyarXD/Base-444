@@ -91,15 +91,44 @@ Deno.serve(async (req) => {
     const { licenseNumber, state, businessName, einNumber } = body;
     const result = runVerification({ licenseNumber, state, businessName, einNumber });
 
-    const updated = await base44.asServiceRole.entities.Contractor.update(contractor.id, {
+    // The licence number and EIN are written to ContractorVerification, whose
+    // read policy is limited to the owning provider and admins. They are NOT
+    // written to Contractor: that record is publicly readable so customers can
+    // view provider profiles, and this platform's policies work on whole rows,
+    // so anything stored there is readable by anyone signed in. Only
+    // non-sensitive signals stay on the public profile.
+    const existing = await base44.asServiceRole.entities.ContractorVerification.filter({
+      contractor_email: user.email,
+    });
+    const privatePayload = {
+      contractor_id: contractor.id,
+      contractor_email: user.email,
       license_number: licenseNumber.trim(),
+      ein_number: einNumber ? einNumber.trim() : '',
+      submitted_at: new Date().toISOString(),
+    };
+    if (existing.length > 0) {
+      await base44.asServiceRole.entities.ContractorVerification.update(existing[0].id, privatePayload);
+      // A provider who somehow accumulated duplicates keeps exactly one row,
+      // so a later read can never pick up a stale licence number.
+      for (const dupe of existing.slice(1)) {
+        await base44.asServiceRole.entities.ContractorVerification.delete(dupe.id);
+      }
+    } else {
+      await base44.asServiceRole.entities.ContractorVerification.create(privatePayload);
+    }
+
+    const updated = await base44.asServiceRole.entities.Contractor.update(contractor.id, {
       state,
       business_name: businessName.trim(),
-      ein_number: einNumber ? einNumber.trim() : '',
       // Server-derived, never trusts whatever the client sent for these:
       verification_status: result.status,
       verification_submitted_date: new Date().toISOString(),
       verification_notes: result.notes || '',
+      // Defensive: if this profile still carries identifiers from before the
+      // split, clear them here so a submission also repairs the old record.
+      license_number: null,
+      ein_number: null,
     });
 
     return Response.json({ success: true, contractor: updated });

@@ -1,0 +1,68 @@
+{
+  "name": "ContractorVerification",
+  "type": "object",
+  "description": "Private verification identifiers for a provider. Split out of Contractor because Contractor.read is intentionally public (customers must be able to view provider profiles), and this platform's row-level policies cannot hide individual fields — so every field on Contractor is readable by anyone signed in. A licence number and an EIN are a business tax identifier and a regulated credential; neither belongs on a world-readable record. The public profile keeps only non-sensitive signals (verification_status, state, business_name).",
+  "properties": {
+    "contractor_id": {
+      "type": "string",
+      "title": "Contractor Profile ID"
+    },
+    "contractor_email": {
+      "type": "string",
+      "title": "Provider Email",
+      "description": "The owning provider's email. Read access is keyed on this field rather than on created_by, because these rows are written by the verification function under the service role and created_by therefore reflects the service identity, not the provider. Mirrors the pattern already proven by Reminder.recipient_email."
+    },
+    "license_number": {
+      "type": "string",
+      "title": "Contractor License Number"
+    },
+    "ein_number": {
+      "type": "string",
+      "title": "LLC / EIN Number"
+    },
+    "submitted_at": {
+      "type": "string",
+      "title": "Submitted At",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "contractor_email"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.contractor_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.contractor_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

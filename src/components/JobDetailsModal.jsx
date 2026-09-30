@@ -183,7 +183,11 @@ export default function JobDetailsModal({ job, open, onOpenChange, onAccept, acc
           {job.address && canViewFull && (
             <div>
               <p className="font-semibold text-sm mb-2">Location</p>
-              <AddressMap address={job.address} />
+              <AddressMap
+                address={[job.address, job.city, job.state, job.zip].filter(Boolean).join(", ")}
+                lat={job.job_lat}
+                lng={job.job_lng}
+              />
             </div>
           )}
 

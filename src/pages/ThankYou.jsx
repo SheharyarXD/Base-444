@@ -5,7 +5,38 @@ import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { motion } from "framer-motion";
 
+// Copy is per product and describes only what the purchase actually did.
 const planMessages = {
+  post_single: {
+    title: "Post added",
+    desc: "1 post has been added to your account. Publish your job whenever you're ready.",
+    action: { label: "Post a Job", href: "/post-job" },
+  },
+  post_bag_small: {
+    title: "Small Bag of Posts added",
+    desc: "3 posts have been added to your account.",
+    action: { label: "Post a Job", href: "/post-job" },
+  },
+  post_bag_medium: {
+    title: "Medium Bag of Posts added",
+    desc: "5 posts have been added to your account.",
+    action: { label: "Post a Job", href: "/post-job" },
+  },
+  post_bag_large: {
+    title: "Large Bag of Posts added",
+    desc: "8 posts have been added to your account.",
+    action: { label: "Post a Job", href: "/post-job" },
+  },
+  customer_monthly: {
+    title: "Monthly subscription active",
+    desc: "You can post jobs without using post credits while your subscription is active.",
+    action: { label: "Post a Job", href: "/post-job" },
+  },
+  customer_annual: {
+    title: "Annual subscription active",
+    desc: "You can post jobs without using post credits while your subscription is active.",
+    action: { label: "Post a Job", href: "/post-job" },
+  },
   verified_pro: {
     title: "Pro Badge Purchased!",
     desc: "Your Pro Badge is now live on your profile. Note: this is a separate cosmetic badge from license verification — submit your license/EIN from Account for a real Verified badge.",

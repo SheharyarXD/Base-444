@@ -119,17 +119,14 @@
       "type": "number",
       "title": "Preferred Miles Distance"
     },
-    "license_number": {
-      "type": "string",
-      "title": "Contractor License Number"
-    },
     "business_name": {
       "type": "string",
       "title": "Business Name"
     },
-    "ein_number": {
+    "_note_sensitive_fields_moved": {
       "type": "string",
-      "title": "LLC / EIN Number"
+      "title": "Note",
+      "description": "license_number and ein_number used to live here. They were moved to the ContractorVerification entity because this record's read policy is public (customers must be able to view provider profiles) and the platform's policies apply to whole rows, so anything stored here is readable by every signed-in user. A licence number is a regulated credential and an EIN is a tax identifier; neither may be republished here. Existing rows are cleared by the migrateVerificationDetails function. Do not re-add these fields to this entity."
     },
     "verification_status": {
       "type": "string",

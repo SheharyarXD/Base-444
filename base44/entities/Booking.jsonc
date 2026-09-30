@@ -118,6 +118,7 @@
         "pending",
         "accepted",
         "on_the_way",
+        "arriving",
         "in_progress",
         "completed",
         "cancelled"
@@ -135,6 +136,17 @@
     "contractor_lng": {
       "type": "number",
       "title": "Contractor Longitude"
+    },
+    "contractor_location_updated_at": {
+      "type": "string",
+      "title": "Provider Location Updated At",
+      "format": "date-time",
+      "description": "Server-stamped time of the last accepted provider location write (set by the updateProviderLocation function, never by a client). Without this a customer cannot tell a live position from a half-hour-old one, so the tracking UI treats a missing/old value as not-live rather than as current — see classifyLocationFreshness in src/lib/tracking.js. Cleared, along with the coordinates, when the booking reaches completed/cancelled."
+    },
+    "contractor_location_accuracy_m": {
+      "type": "number",
+      "title": "Provider Location Accuracy (metres)",
+      "description": "Reported GPS accuracy radius of the last accepted fix. Fixes worse than MAX_ACCEPTABLE_ACCURACY_METERS are rejected rather than stored, so a customer is never shown a city-block-wide guess as a precise position."
     },
     "job_lat": {
       "type": "number",
@@ -172,8 +184,12 @@
     "category"
   ],
   "rls": {
+    "_comment_read_policy": "The read policy previously carried a clause granting every signed-in user access to any booking while its status was 'pending'. That clause made open-job discovery work, but this platform's policies apply to whole rows, so it also exposed the customer's phone number, email address and exact street address on every open job to anyone with an account. It has been removed. Discovery now goes through the getOpenJobs function, which reads under the service role and returns an allow-listed, redacted projection with approximate coordinates. Do not reinstate the pending clause — doing so silently re-opens that exposure.",
+    "_comment_create_policy": "Creation is admin-only so it can only happen through the createJobPost function. Posting a job now costs a credit or an active subscription, and while this rule allowed a client to create the record directly, that paywall was bypassable by calling the platform's create method — the entitlement check would simply never run. The function performs the check, creates the job, and only then spends the credit.",
     "create": {
-      "created_by": "{{user.email}}"
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "read": {
       "$or": [
@@ -182,9 +198,6 @@
         },
         {
           "data.accepted_by_email": "{{user.email}}"
-        },
-        {
-          "data.status": "pending"
         },
         {
           "user_condition": {
